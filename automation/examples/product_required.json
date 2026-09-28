@@ -1,0 +1,11 @@
+{
+  "goal": "Faça login e abra o cadastro de produto. Para testar a validação, deixe o nome vazio e toque Salvar produto. Confirme o erro Informe o nome do produto e permaneça no formulário.",
+  "inputs": [
+    {"name": "email", "description": "E-mail para login", "target": "login.email", "value": "dev@example.test"},
+    {"name": "password", "description": "Senha para login", "target": "login.password", "value": "Demo123!"}
+  ],
+  "success_conditions": [
+    {"target": "product.error", "check": "label_contains", "expected": "Informe o nome do produto"},
+    {"target": "product.form", "check": "exists"}
+  ]
+}

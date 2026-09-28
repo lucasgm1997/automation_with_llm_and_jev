@@ -60,10 +60,22 @@ Map<String, dynamic> captureSemanticSnapshot() {
             ? 'textField'
             : 'content',
         'enabled': enabled,
+        'focused': flags.isFocused == Tristate.isTrue,
+        'obscured': flags.isObscured,
+        'is_empty': data.value.isEmpty,
         'key_count': keyCount,
         'actions': [
           if (enabled && keyCount == 1 && data.hasAction(SemanticsAction.tap))
             'tap',
+          if (enabled &&
+              keyCount == 1 &&
+              flags.isTextField &&
+              !flags.isReadOnly &&
+              (data.hasAction(SemanticsAction.tap) ||
+                  data.hasAction(SemanticsAction.setText)))
+            // fill includes focusing the field first; Flutter may only
+            // advertise its native setText action after it gains focus.
+            'fill',
         ],
       });
     }

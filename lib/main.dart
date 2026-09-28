@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 
 import 'automation/semantic_snapshot.dart';
+import 'demo_journeys.dart';
 
 void main() {
   if (kDebugMode) {
@@ -95,6 +96,19 @@ class _MyHomePageState extends State<MyHomePage> {
         // Here we take the value from the MyHomePage object that was created by
         // the App.build method, and use it to set our appbar title.
         title: Text(widget.title),
+        actions: [
+          identifiedControl(
+            'journeys.open',
+            IconButton(
+              key: const ValueKey('journeys.open'),
+              tooltip: 'Abrir jornadas de login e produtos',
+              icon: const Icon(Icons.science_outlined),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const DemoJourneys())),
+            ),
+          ),
+        ],
       ),
       body: Center(
         // Center is a layout widget. It takes a single child and positions it

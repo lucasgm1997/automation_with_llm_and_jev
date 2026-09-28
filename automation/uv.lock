@@ -327,6 +327,7 @@ source = { virtual = "." }
 dependencies = [
     { name = "httpx", extra = ["http2"] },
     { name = "mcp" },
+    { name = "pydantic" },
     { name = "python-dotenv" },
 ]
 
@@ -340,6 +341,7 @@ dev = [
 requires-dist = [
     { name = "httpx", extras = ["http2"], specifier = ">=0.28,<1" },
     { name = "mcp", specifier = ">=1.20,<2" },
+    { name = "pydantic", specifier = ">=2.11,<3" },
     { name = "python-dotenv", specifier = ">=1.1,<2" },
 ]
 

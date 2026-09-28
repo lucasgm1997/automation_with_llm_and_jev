@@ -1,0 +1,12 @@
+{
+  "goal": "Abra o login, tente entrar com as credenciais inválidas fornecidas e confirme que aparece o erro de credenciais inválidas.",
+  "inputs": [
+    {"name": "email", "description": "E-mail inválido para este teste negativo", "target": "login.email", "value": "invalid@example.test"},
+    {"name": "password", "description": "Senha inválida para este teste negativo", "target": "login.password", "value": "Wrong123!"}
+  ],
+  "success_conditions": [
+    {"target": "login.error", "check": "label_contains", "expected": "Credenciais inválidas"},
+    {"target": "login.title", "check": "exists"},
+    {"target": "products.title", "check": "absent"}
+  ]
+}

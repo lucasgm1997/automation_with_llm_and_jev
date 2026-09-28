@@ -1,0 +1,14 @@
+{
+  "goal": "Abra as jornadas, faça login se necessário e cadastre um produto usando o nome e preço fornecidos. Confirme que o produto aparece na lista após salvar.",
+  "inputs": [
+    {"name": "email", "description": "E-mail para login", "target": "login.email", "value": "dev@example.test"},
+    {"name": "password", "description": "Senha para login", "target": "login.password", "value": "Demo123!"},
+    {"name": "product_name", "description": "Nome do novo produto", "target": "product.name", "value": "Luminária de teste"},
+    {"name": "product_price", "description": "Preço do novo produto", "target": "product.price", "value": "149.90"}
+  ],
+  "success_conditions": [
+    {"target": "products.list", "check": "label_contains", "input_ref": "product_name"},
+    {"target": "products.list", "check": "label_contains", "input_ref": "product_price"},
+    {"target": "products.notice", "check": "label_contains", "expected": "Produto cadastrado"}
+  ]
+}

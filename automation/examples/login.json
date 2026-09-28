@@ -1,0 +1,8 @@
+{
+  "goal": "Abra a jornada de login e entre com as credenciais fornecidas. Termine na lista Meus produtos.",
+  "inputs": [
+    {"name": "email", "description": "E-mail para login", "target": "login.email", "value": "dev@example.test"},
+    {"name": "password", "description": "Senha para login", "target": "login.password", "value": "Demo123!"}
+  ],
+  "success_conditions": [{"target": "products.title", "check": "exists"}]
+}

@@ -8,6 +8,7 @@ from datetime import timedelta
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
+from dotenv import dotenv_values
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -25,8 +26,11 @@ def websocket_uri(uri: str) -> str:
 
 def dart_binary() -> str:
     local = Path(__file__).resolve().parents[2] / ".fvm/flutter_sdk/bin/dart"
-    return os.environ.get("DART_BIN") or (
-        str(local) if local.exists() else shutil.which("dart") or "dart"
+    config = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
+    return (
+        os.environ.get("DART_BIN")
+        or config.get("DART_BIN")
+        or (str(local) if local.exists() else shutil.which("dart") or "dart")
     )
 
 
@@ -55,6 +59,10 @@ class Marionette:
 
     async def tap(self, key: str) -> None:
         await self.call("tap", {"key": key})
+
+    async def fill(self, key: str, value: str) -> None:
+        await self.tap(key)
+        await self.call("enter_text", {"key": key, "input": value})
 
 
 @asynccontextmanager

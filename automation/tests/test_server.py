@@ -17,8 +17,12 @@ async def test_stdio_tool_discovery_and_invalid_run():
     ):
         await session.initialize()
         listing = await session.list_tools()
-        assert [tool.name for tool in listing.tools] == ["run_counter_e2e"]
-        assert listing.tools[0].outputSchema["type"] == "object"
+        assert {tool.name for tool in listing.tools} == {
+            "inspect_ui",
+            "run_ui_task",
+            "run_counter_e2e",
+        }
+        assert all(tool.outputSchema["type"] == "object" for tool in listing.tools)
         # Invalid arguments must fail before connecting to a device or API.
         result = await session.call_tool(
             "run_counter_e2e", {"vm_uri": "unused", "increments": 0}

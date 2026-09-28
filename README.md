@@ -1,8 +1,9 @@
 # Flutter + Jev: E2E por semântica
 
-MVP executável: o agente pede um teste; um executor local lê a semântica do
-Flutter, consulta o Jev, toca via Marionette e verifica o resultado em código.
-O cenário inicial aumenta o contador em três a partir do valor atual.
+O desenvolvedor descreve uma jornada no chat do Codex/Claude. O agente interpreta
+o pedido, identifica dados e asserções, e chama `run_ui_task`. Um executor local
+lê a semântica do Flutter, consulta o Jev, toca/preenche via Marionette e verifica
+o resultado em código. Não há um runner Python por jornada.
 
 ```mermaid
 flowchart LR
@@ -64,9 +65,14 @@ e encerramento; `setup_ms` e `timings` permitem separar esses custos.
 
 ## Usar por MCP
 
-O workspace já tem o servidor `jev-e2e` em `.vscode/mcp.json`. Sua ferramenta é
-`run_counter_e2e(vm_uri, increments=3, policy="jev", model="jev-latest")`.
-Ela lê a chave do mesmo `automation/.env`.
+O workspace tem o servidor `jev-e2e` em `.vscode/mcp.json`, com três ferramentas:
+
+- `inspect_ui(vm_uri)`: descobre os IDs, labels e ações da tela atual.
+- `run_ui_task(vm_uri, goal, success_conditions, inputs, ...)`: executa uma jornada
+  definida em tempo de execução. Esta é a ferramenta principal.
+- `run_counter_e2e(...)`: mantém compatibilidade com a prova inicial do contador.
+
+O executor lê a chave TypeSafe de `automation/.env`.
 
 Para cadastrar em um CLI, execute da raiz do projeto. Configure `DART_BIN`
 em `automation/.env` se o Dart correto não estiver no PATH do CLI.
@@ -86,7 +92,8 @@ próprio cadastro em `~/.codex/config.toml`.
 
 Se o Codex já estava aberto durante o cadastro, saia e abra `codex` novamente
 na pasta do projeto. Use `/mcp` para conferir o servidor `jev-e2e` e a
-ferramenta `run_counter_e2e`.
+as três ferramentas. Reinicie o cliente após atualizar o servidor para carregar
+a nova lista.
 
 ### Onde escrever o pedido
 
@@ -94,17 +101,32 @@ Digite o pedido **no chat normal do Codex CLI**, no mesmo campo em que você
 pede alterações de código. Com o app rodando em debug, copie a URI Dart VM
 Service do terminal do Flutter e envie, por exemplo:
 
-> Use o MCP jev-e2e para clicar 5 vezes no botão de incrementar, com o Jev
-> decidindo as ações. A URI do app é http://127.0.0.1:PORT/TOKEN=/.
-> Verifique que o contador aumentou 5 e mostre o resultado e os tempos.
+> Use o MCP jev-e2e para testar login com dev@example.test e Demo123!.
+> Abra as jornadas do app e confirme que termina em Meus produtos.
+> A URI do app é http://127.0.0.1:PORT/TOKEN=/.
 
-O Codex deve traduzir o pedido em **uma** chamada `run_counter_e2e`:
+Outro pedido, usando o mesmo executor:
+
+> Faça login e cadastre o produto Cadeira com preço 89,90. Confirme que ele
+> aparece na lista. Use run_ui_task com Jev e as credenciais da demonstração.
+
+Um teste negativo:
+
+> Teste login com credenciais inválidas. Confirme a mensagem de erro e que
+> a lista de produtos não fica acessível.
+
+O Codex inspeciona UI/código, interpreta o pedido e prepara **uma** chamada
+`run_ui_task`. Por exemplo, para o primeiro pedido:
 
 ```json
 {
   "vm_uri": "http://127.0.0.1:PORT/TOKEN=/",
-  "increments": 5,
-  "policy": "jev"
+  "goal": "Abra as jornadas e faça login com os dados fornecidos.",
+  "inputs": [
+    {"name": "email", "description": "E-mail de login", "target": "login.email", "value": "dev@example.test"},
+    {"name": "password", "description": "Senha de login", "target": "login.password", "value": "Demo123!"}
+  ],
+  "success_conditions": [{"target": "products.title", "check": "exists"}]
 }
 ```
 
@@ -112,10 +134,52 @@ Substitua a URI pelo endereço real, que pode mudar ao reiniciar o app. O MCP
 não descobre esse endereço automaticamente. `/mcp` serve para inspecionar a
 conexão; o pedido em linguagem natural vai no chat.
 
-O texto livre é interpretado pelo Codex; a ferramenta recebe parâmetros
-estruturados. Neste MVP, `increments` aceita **1 a 10** e o único cenário é
-o contador. O prompt interno enviado ao Jev fica em `jev_e2e/policy.py` e é
-complementado pelo estado semântico e pelo objetivo calculado no executor.
+Você escreve o pedido em linguagem natural; o agente preenche esse JSON. Ele
+precisa definir o que comprova sucesso usando os IDs reais das telas, inclusive
+lendo o código para conhecer a tela de destino. O Jev escolhe ações no loop
+interno; não interpreta o pedido para gerar código Python nem declara sucesso.
+O executor oferece ações com base no snapshot atual, sem nomes de telas fixos.
+`target` em um input é opcional; quando informado, restringe o campo em que ele
+pode ser usado. `allowed_targets` restringe os controles autorizados na jornada.
+
+Para credenciais locais, substitua `value` por `env`, por exemplo
+`"env": "E2E_PASSWORD"`, e defina a variável em `automation/.env` ou no ambiente.
+Os valores dos inputs ficam no executor e são substituídos por referências
+antes de enviar estado/objetivo ao Jev ou gravar o trace. O app recebe os valores
+reais pelo Marionette. Use nomes e descrições que expliquem o papel de cada input.
+
+O prompt interno de decisão está em `jev_e2e/policy.py`; o objetivo é o `goal`
+de cada chamada. `--increments` pertence apenas ao comando legado `run`.
+
+## Jornadas disponíveis no app
+
+Abra o ícone de jornadas (frasco) no topo da tela do contador. O app oferece
+login e uma pequena lista de produtos. Credenciais demonstrativas:
+`dev@example.test` / `Demo123!`. Autenticação e armazenamento são locais, em
+memória, sem backend. Hot restart (`R` no terminal do Flutter) reinicia a sessão
+e os produtos, permitindo repetir testes desde o mesmo estado.
+
+Há quatro exemplos de especificação, que usam o mesmo executor:
+
+| Arquivo em `automation/examples` | Resultado esperado |
+|---|---|
+| `login.json` | Entrar e abrir Meus produtos |
+| `login_invalid.json` | Mostrar erro de credenciais e continuar no login |
+| `create_product.json` | Cadastrar e encontrar nome/preço na lista |
+| `product_required.json` | Tentar salvar sem nome e conferir a validação |
+
+Os JSONs são exemplos reutilizáveis, não um catálogo obrigatório de prompts.
+O agente pode montar outras especificações a partir do pedido do desenvolvedor.
+Para executar diretamente pelo terminal, forneça uma especificação:
+
+```sh
+export DART_BIN="$HOME/fvm/versions/3.38.5/bin/dart"
+uv run --frozen --directory automation python -m jev_e2e task \
+  --vm-uri 'http://127.0.0.1:PORT/TOKEN=/' --spec examples/create_product.json
+```
+
+O CLI direto recebe JSON; a interpretação do texto livre é feita pelo Codex ou
+Claude que hospeda o MCP. Assim, não é necessário construir outro agente/SDK.
 
 O servidor limita cada execução a 40 segundos e rejeita execuções concorrentes
 nele mesmo. Não opere o mesmo app com outro driver ou manualmente durante o
@@ -168,41 +232,53 @@ O exemplo omite os campos `parent` e `role` por brevidade. `parent` preserva a
 relação com o ancestral identificado mais próximo. Semântica só com labels
 ajuda a leitura, mas precisa de IDs estáveis para este contrato.
 
-## Limites e extensão do MVP
+## Limites e asserções
 
-- O código calcula `esperado = valor inicial + increments` e só aprova por essa
-  asserção. O Jev não pode declarar o teste concluído.
-- As opções são `tap:counter.increment`, `wait` e `blocked`, conforme o estado.
+- O chamador define as asserções da jornada. Existem verificações de presença,
+  ausência, igualdade de valor, conteúdo da label e variação numérica. Todas
+  precisam passar. O Jev não pode declarar o teste concluído.
+- As opções são toques e preenchimentos observáveis, `wait` e `blocked`.
   IDs, chaves, enabled, ação e confiança mínima de 0,7 são verificados. O limiar
   é inicial e precisa de calibração; não garante acerto.
 - O executor relê a UI após a inferência e descarta decisões de um snapshot
   alterado. A leitura e o toque ainda não são uma operação atômica.
-- Cada toque precisa aumentar exatamente um. A pós-condição tem dois segundos
-  para aparecer; um toque sem efeito confirmado não é repetido automaticamente.
-- Há limites de 12 decisões, 10 incrementos, 200 nós e 16 mil caracteres por
-  snapshot. A semântica não garante que um controle esteja desobstruído; o
+- Após uma ação, há até três segundos para observar uma mudança semântica;
+  uma ação sem efeito confirmado não é repetida automaticamente. Se as asserções
+  já forem verdadeiras no início, o resultado é `already_satisfied`, não `passed`.
+- O padrão é 30 decisões, com máximo configurável de 60, dentro de 40 segundos.
+  Há limites de 200 nós e 16 mil caracteres por snapshot, e 255 opções por decisão.
+  A semântica não garante que um controle esteja desobstruído; o
   toque real e sua pós-condição continuam sendo verificados.
 
-Esta versão suporta **toques no cenário do contador**. Formulários, rolagem,
-permissões nativas, recuperação com outra LLM e CI são próximos incrementos.
-Para o app real, comece com um fluxo com IDs e asserção explícitos, por exemplo
-login → catálogo → carrinho. Adicione operações com argumentos validados:
-`enter_text` usa fixtures locais, scroll tem limites e cada cenário tem uma
-lista de ações permitidas. Regressões fixas podem continuar determinísticas;
-o contador valida a integração, não demonstra superioridade da IA.
+Esta versão suporta **toques e preenchimentos de campos identificados**.
+Rolagem, permissões nativas, recuperação com outra LLM e CI ainda não estão
+implementados. Regressões fixas podem continuar determinísticas. As jornadas
+validam a integração, não demonstram superioridade da IA sobre scripts.
 
-No modo `jev`, os nós exportados são enviados à TypeSafe. Snapshots ficam no
-trace local. Use dados de teste e selecione os nós necessários no app real.
+No modo `jev`, os nós exportados, com os inputs substituídos por referências,
+são enviados à TypeSafe. Snapshots tratados ficam no trace local.
 
 ## Verificação local
 
-Validação realizada em 28/09/2026: Android no `emulator-5554`, chamada à
-ferramenta MCP `run_counter_e2e`, Jev real (`jev-1.13.0`), contador **7 → 10**.
-O teste passou em **2,08 s**, incluindo conexão e encerramento. Médias dessa
-execução: snapshot **34 ms**, consulta Jev **296 ms**, toque **53 ms**. É uma
-medição pontual desse cenário, não um benchmark nem uma garantia de latência.
-O teste `scripted` também passou. A análise Flutter, 3 testes Flutter e 17
-testes Python (incluindo o protocolo MCP) passaram.
+Validação em 28/09/2026 no Android `emulator-5554`, com Jev real (`jev-1.13.0`):
+
+| Jornada | Resultado | Ações | Tempo |
+|---|---|---:|---:|
+| Login válido | passou | 4 | 2,71 s |
+| Credenciais inválidas | passou | 4 | 3,77 s |
+| Login + cadastro de produto | passou | 8 | 6,13 s |
+| Login + validação de nome obrigatório | passou | 6 | 4,41 s |
+
+Cada preenchimento inclui foco e entrada do texto. Os tempos incluem conexão
+e encerramento do executor; o hot restart de preparação fica fora da medição.
+O resumo local está em `automation/artifacts/journeys-validation.json`.
+São amostras, não um benchmark nem garantia de latência ou taxa de sucesso.
+Em execuções adicionais, o limiar de confiança também produziu `blocked`:
+essa condição devolve evidência ao agente e não aprova a jornada.
+
+Também passaram a análise Flutter, **5 testes Flutter e 29 testes Python**,
+incluindo o protocolo MCP. O teste legado do contador com `scripted` e Jev
+já havia sido validado anteriormente.
 
 ```sh
 "$FLUTTER_BIN" analyze --no-pub
