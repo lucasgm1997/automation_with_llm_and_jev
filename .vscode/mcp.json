@@ -1,0 +1,26 @@
+{
+    "servers": {
+        "marionette": {
+            "type": "stdio",
+            "command": "${userHome}/fvm/versions/3.38.5/bin/dart",
+            "args": ["pub", "global", "run", "marionette_mcp"]
+        },
+        "jev-e2e": {
+            "type": "stdio",
+            "command": "${userHome}/.local/bin/uv",
+            "args": [
+                "run",
+                "--frozen",
+                "--directory",
+                "${workspaceFolder}/automation",
+                "python",
+                "-m",
+                "jev_e2e",
+                "serve"
+            ],
+            "env": {
+                "DART_BIN": "${userHome}/fvm/versions/3.38.5/bin/dart"
+            }
+        }
+    }
+}

@@ -43,3 +43,10 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Local automation credentials, environment and run evidence
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+/automation/artifacts/

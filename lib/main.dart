@@ -2,9 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:marionette_flutter/marionette_flutter.dart';
 
+import 'automation/semantic_snapshot.dart';
+
 void main() {
   if (kDebugMode) {
     MarionetteBinding.ensureInitialized();
+    registerAutomationSemantics();
   } else {
     WidgetsFlutterBinding.ensureInitialized();
   }
@@ -113,17 +116,29 @@ class _MyHomePageState extends State<MyHomePage> {
           mainAxisAlignment: .center,
           children: [
             const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            Semantics(
+              identifier: 'counter.value',
+              label: 'Counter',
+              value: '$_counter',
+              excludeSemantics: true,
+              child: Text(
+                '$_counter',
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
             ),
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
+      floatingActionButton: MergeSemantics(
+        child: Semantics(
+          identifier: 'counter.increment',
+          child: FloatingActionButton(
+            key: const ValueKey('counter.increment'),
+            onPressed: _incrementCounter,
+            tooltip: 'Increment',
+            child: const Icon(Icons.add),
+          ),
+        ),
       ),
     );
   }
