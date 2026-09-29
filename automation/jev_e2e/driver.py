@@ -1,5 +1,6 @@
 """A persistent MCP session to Marionette; no process startup per gesture."""
 
+import asyncio
 import json
 import os
 import shutil
@@ -11,6 +12,8 @@ from urllib.parse import urlsplit, urlunsplit
 from dotenv import dotenv_values
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+
+from .runner import RunStopped, validate_snapshot
 
 
 def websocket_uri(uri: str) -> str:
@@ -57,12 +60,41 @@ class Marionette:
             "nodes": response["nodes"],
         }
 
-    async def tap(self, key: str) -> None:
-        await self.call("tap", {"key": key})
+    async def semantic_action(self, identifier: str, operation: str) -> None:
+        raw = await self.call(
+            "call_custom_extension",
+            {
+                "extension": "e2e_action",
+                "args": {"identifier": identifier, "operation": operation},
+            },
+        )
+        response = json.loads(raw)
+        if response.get("status") != "Success" or response.get("performed") is not True:
+            raise RuntimeError("Semantic interaction failed.")
 
-    async def fill(self, key: str, value: str) -> None:
-        await self.tap(key)
-        await self.call("enter_text", {"key": key, "input": value})
+    async def tap(self, identifier: str) -> None:
+        await self.semantic_action(identifier, "tap")
+
+    async def fill(self, identifier: str, value: str) -> None:
+        await self.semantic_action(identifier, "focus")
+        try:
+            async with asyncio.timeout(2):
+                while True:
+                    nodes = validate_snapshot(await self.snapshot())
+                    node = nodes.get(identifier, {})
+                    if (
+                        node.get("focused") is True
+                        and node.get("role") == "textField"
+                        and node.get("enabled") is True
+                        and "fill" in node.get("actions", [])
+                    ):
+                        break
+                    await asyncio.sleep(0.05)
+        except TimeoutError as exc:
+            raise RunStopped("Requested semantic field did not acquire focus.") from exc
+        # Keep input values out of custom-extension arguments: Marionette logs
+        # those arguments, while enter_text logs only the field selector.
+        await self.call("enter_text", {"focused_element": True, "input": value})
 
 
 @asynccontextmanager

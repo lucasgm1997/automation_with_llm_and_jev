@@ -187,20 +187,20 @@ teste. Processos separados não compartilham esse bloqueio.
 
 ## Contrato semântico para o app real
 
-`lib/automation/semantic_snapshot.dart` registra a extensão **somente em debug**.
-Ela lê `SemanticsNode.getSemanticsData()` da árvore real, respeitando nós
-mesclados, e exporta apenas nós com `identifier`. Não acessa `_counter` nem
-altera estado interno do app. Valores de campos obscured são ocultados.
+`lib/automation/semantic_snapshot.dart` registra duas extensões **somente em
+debug**. `e2e_snapshot` lê `SemanticsNode.getSemanticsData()` da árvore real,
+respeitando nós mesclados, e exporta apenas nós com `identifier`. Valores de
+campos obscured são ocultados. `e2e_action` resolve esse identificador na árvore
+atual e executa a ação de acessibilidade `SemanticsAction.tap` pelo Flutter.
 
-O Marionette **0.6.0 instalado** executa por `ValueKey`, enquanto o snapshot
-identifica por `Semantics.identifier`. Use o mesmo identificador nos dois:
+**Não é necessário adicionar `ValueKey` aos componentes.** O identificador
+semântico é o contrato usado tanto para observar quanto para interagir:
 
 ```dart
 MergeSemantics(
   child: Semantics(
     identifier: 'checkout.submit',
     child: ElevatedButton(
-      key: const ValueKey('checkout.submit'),
       onPressed: submit,
       child: const Text('Finalizar pedido'),
     ),
@@ -211,19 +211,38 @@ MergeSemantics(
 Use `MergeSemantics` quando o wrapper e o controle produzirem nós separados:
 o identificador, a label, o estado enabled e a ação tap precisam pertencer ao
 mesmo nó acessível. Mescle **um controle por vez**, não uma tela inteira.
-Identificadores e chaves devem ser únicos no app montado; para listas, use o
-ID do item, não sua posição. Labels descrevem o controle e podem ser traduzidas.
+Identificadores devem ser únicos na árvore semântica exposta; para listas, use
+o ID do item, não sua posição. Labels descrevem o controle e podem ser traduzidas.
+IDs ausentes ou duplicados, controles desabilitados e ações não expostas são
+rejeitados antes da interação. Keys existentes podem continuar sendo usadas
+pelo app, mas não participam desse contrato.
+
+Para preencher um campo, o executor pede foco pelo identificador semântico,
+confirma no snapshot que aquele campo recebeu foco e chama o `enter_text` do
+Marionette com `focused_element: true`. Os valores de entrada não são enviados
+como argumentos das extensões customizadas, pois o Marionette registra esses
+argumentos nos logs.
+
+Essa modalidade exercita a interação por **acessibilidade**. O clique semântico
+aciona o callback anunciado pelo controle; não simula eventos de ponteiro nem
+valida geometria, sobreposição ou se um toque físico atingiria o botão.
+Testes dessas propriedades precisam de interação por ponteiro separadamente.
+
+O snapshot agora usa `schema_version: 2`. Ao atualizar a instrumentação, faça
+**hot restart** do app e reinicie/reconecte o MCP `jev-e2e` para carregar o novo
+driver. Copie essa instrumentação e sua inicialização em debug ao integrar
+outro projeto; somente instalar o pacote Marionette não cria essas extensões.
 
 Para uma asserção, exponha um valor acessível da própria interface, como no
 `counter.value`. Um snapshot contém, por exemplo:
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "nodes": [
     {"id": "counter.value", "label": "Counter", "value": "2", "actions": []},
     {"id": "counter.increment", "label": "Increment", "enabled": true,
-     "key_count": 1, "actions": ["tap"]}
+     "actions": ["tap"]}
   ]
 }
 ```
@@ -238,7 +257,7 @@ ajuda a leitura, mas precisa de IDs estáveis para este contrato.
   ausência, igualdade de valor, conteúdo da label e variação numérica. Todas
   precisam passar. O Jev não pode declarar o teste concluído.
 - As opções são toques e preenchimentos observáveis, `wait` e `blocked`.
-  IDs, chaves, enabled, ação e confiança mínima de 0,7 são verificados. O limiar
+  IDs únicos, enabled, ação e confiança mínima de 0,7 são verificados. O limiar
   é inicial e precisa de calibração; não garante acerto.
 - O executor relê a UI após a inferência e descarta decisões de um snapshot
   alterado. A leitura e o toque ainda não são uma operação atômica.
@@ -247,8 +266,8 @@ ajuda a leitura, mas precisa de IDs estáveis para este contrato.
   já forem verdadeiras no início, o resultado é `already_satisfied`, não `passed`.
 - O padrão é 30 decisões, com máximo configurável de 60, dentro de 40 segundos.
   Há limites de 200 nós e 16 mil caracteres por snapshot, e 255 opções por decisão.
-  A semântica não garante que um controle esteja desobstruído; o
-  toque real e sua pós-condição continuam sendo verificados.
+  A semântica não garante que um controle esteja desobstruído; esta modalidade
+  verifica a ação acessível e sua pós-condição, sem validar o toque físico.
 
 Esta versão suporta **toques e preenchimentos de campos identificados**.
 Rolagem, permissões nativas, recuperação com outra LLM e CI ainda não estão
@@ -260,7 +279,8 @@ são enviados à TypeSafe. Snapshots tratados ficam no trace local.
 
 ## Verificação local
 
-Validação em 28/09/2026 no Android `emulator-5554`, com Jev real (`jev-1.13.0`):
+Validação inicial em 28/09/2026 no Android `emulator-5554`, com Jev real
+(`jev-1.13.0`), ainda usando a interação anterior por key:
 
 | Jornada | Resultado | Ações | Tempo |
 |---|---|---:|---:|
@@ -276,9 +296,21 @@ São amostras, não um benchmark nem garantia de latência ou taxa de sucesso.
 Em execuções adicionais, o limiar de confiança também produziu `blocked`:
 essa condição devolve evidência ao agente e não aprova a jornada.
 
-Também passaram a análise Flutter, **5 testes Flutter e 29 testes Python**,
-incluindo o protocolo MCP. O teste legado do contador com `scripted` e Jev
-já havia sido validado anteriormente.
+Após a remoção da dependência de keys, passaram a análise Flutter, **7 testes
+Flutter e 33 testes Python**, incluindo o protocolo MCP, identificação duplicada,
+controles desabilitados e validação de foco antes do preenchimento.
+
+A validação determinística no emulador também passou usando somente
+`Semantics.identifier`: contador, login inválido, login válido, validação de nome
+obrigatório e cadastro de produto. Evidência local:
+`automation/artifacts/semantics-only-validation.json`.
+
+Na verificação adicional via `run_ui_task` com Jev real, foram executadas sete
+ações sem keys, incluindo login e preenchimento do produto. O resultado foi
+`blocked` antes de salvar, por confiança abaixo de 0,7; essa execução não conta
+como jornada aprovada. Resumo:
+`automation/artifacts/semantics-only-jev-validation.json`. Uma tentativa anterior
+falhou na conexão ao VM Service, antes de executar ações.
 
 ```sh
 "$FLUTTER_BIN" analyze --no-pub

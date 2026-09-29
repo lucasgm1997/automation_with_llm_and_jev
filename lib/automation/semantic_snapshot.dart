@@ -7,7 +7,7 @@ import 'package:marionette_flutter/marionette_flutter.dart';
 
 SemanticsHandle? _automationSemantics;
 
-/// Read-only instrumentation. Kept out of profile/release initialization.
+/// Semantic observation and interaction, only registered in debug builds.
 void registerAutomationSemantics() {
   if (!kDebugMode) return;
   _automationSemantics ??= WidgetsBinding.instance.ensureSemantics();
@@ -20,26 +20,35 @@ void registerAutomationSemantics() {
       return MarionetteExtensionResult.success(captureSemanticSnapshot());
     },
   );
+  registerMarionetteExtension(
+    name: 'e2e_action',
+    description: 'Tap or focus a control by its unique Semantics.identifier.',
+    callback: (params) async {
+      final identifier = params['identifier'];
+      final operation = params['operation'];
+      if (identifier == null ||
+          identifier.isEmpty ||
+          (operation != 'tap' && operation != 'focus')) {
+        return const MarionetteExtensionResult.invalidParams(
+          'Provide identifier and operation (tap or focus).',
+        );
+      }
+      await WidgetsBinding.instance.endOfFrame;
+      try {
+        performSemanticInteraction(identifier, operation!);
+        return const MarionetteExtensionResult.success({'performed': true});
+      } on StateError catch (error) {
+        return MarionetteExtensionResult.error(0, error.message);
+      }
+    },
+  );
 }
 
-/// Exports the actual semantics tree, including merged labels and values.
-///
-/// Only explicitly identified nodes enter the automation contract. To make a
-/// node tappable with Marionette 0.6, give its control a `ValueKey<String>` equal
-/// to its Semantics.identifier. Keys must be unique across the mounted app.
-Map<String, dynamic> captureSemanticSnapshot() {
-  final binding = WidgetsBinding.instance;
-  final keys = <String, int>{};
-  void visitElement(Element element) {
-    if (element.widget.key case ValueKey<String>(:final value)) {
-      keys.update(value, (count) => count + 1, ifAbsent: () => 1);
-    }
-    element.visitChildren(visitElement);
-  }
+typedef _Target = ({SemanticsOwner owner, SemanticsNode node, String? parent});
 
-  binding.rootElement?.visitChildren(visitElement);
-  final nodes = <Map<String, dynamic>>[];
-  void visitNode(SemanticsNode node, String? parent) {
+List<_Target> _identifiedTargets() {
+  final targets = <_Target>[];
+  void visitNode(SemanticsOwner owner, SemanticsNode node, String? parent) {
     if (node.isMergedIntoParent) return;
     final data = node.getSemanticsData();
     final flags = data.flagsCollection;
@@ -47,47 +56,91 @@ Map<String, dynamic> captureSemanticSnapshot() {
     var nextParent = parent;
     if (data.identifier.isNotEmpty) {
       nextParent = data.identifier;
-      final enabled = flags.isEnabled != Tristate.isFalse;
-      final keyCount = keys[data.identifier] ?? 0;
-      nodes.add({
-        'id': data.identifier,
-        'parent': parent,
-        'label': data.label.isNotEmpty ? data.label : data.tooltip,
-        'value': flags.isObscured ? '<redacted>' : data.value,
-        'role': flags.isButton
-            ? 'button'
-            : flags.isTextField
-            ? 'textField'
-            : 'content',
-        'enabled': enabled,
-        'focused': flags.isFocused == Tristate.isTrue,
-        'obscured': flags.isObscured,
-        'is_empty': data.value.isEmpty,
-        'key_count': keyCount,
-        'actions': [
-          if (enabled && keyCount == 1 && data.hasAction(SemanticsAction.tap))
-            'tap',
-          if (enabled &&
-              keyCount == 1 &&
-              flags.isTextField &&
-              !flags.isReadOnly &&
-              (data.hasAction(SemanticsAction.tap) ||
-                  data.hasAction(SemanticsAction.setText)))
-            // fill includes focusing the field first; Flutter may only
-            // advertise its native setText action after it gains focus.
-            'fill',
-        ],
-      });
+      targets.add((owner: owner, node: node, parent: parent));
     }
     node.visitChildren((child) {
-      visitNode(child, nextParent);
+      visitNode(owner, child, nextParent);
       return true;
     });
   }
 
-  for (final view in binding.renderViews) {
-    final root = view.owner?.semanticsOwner?.rootSemanticsNode;
-    if (root != null) visitNode(root, null);
+  for (final view in WidgetsBinding.instance.renderViews) {
+    final owner = view.owner?.semanticsOwner;
+    final root = owner?.rootSemanticsNode;
+    if (owner != null && root != null) visitNode(owner, root, null);
   }
-  return {'schema_version': 1, 'nodes': nodes};
+  return targets;
+}
+
+/// Exports identified accessibility nodes. No widget key is required.
+Map<String, dynamic> captureSemanticSnapshot() {
+  final nodes = <Map<String, dynamic>>[];
+  for (final target in _identifiedTargets()) {
+    final data = target.node.getSemanticsData();
+    final flags = data.flagsCollection;
+    final enabled = flags.isEnabled != Tristate.isFalse;
+    nodes.add({
+      'id': data.identifier,
+      'parent': target.parent,
+      'label': data.label.isNotEmpty ? data.label : data.tooltip,
+      'value': flags.isObscured ? '<redacted>' : data.value,
+      'role': flags.isButton
+          ? 'button'
+          : flags.isTextField
+          ? 'textField'
+          : 'content',
+      'enabled': enabled,
+      'focused': flags.isFocused == Tristate.isTrue,
+      'obscured': flags.isObscured,
+      'is_empty': data.value.isEmpty,
+      'actions': [
+        if (enabled && data.hasAction(SemanticsAction.tap)) 'tap',
+        if (enabled &&
+            flags.isTextField &&
+            !flags.isReadOnly &&
+            (data.hasAction(SemanticsAction.tap) ||
+                data.hasAction(SemanticsAction.setText)))
+          // fill includes focusing the field first; Flutter may only
+          // advertise its native setText action after it gains focus.
+          'fill',
+      ],
+    });
+  }
+  return {'schema_version': 2, 'nodes': nodes};
+}
+
+/// Dispatches the same tap action used by accessibility services.
+///
+/// Resolves the live tree again before acting. The identifier must select
+/// exactly one accessible, enabled node that advertises the requested action.
+/// This exercises semantic callbacks, not physical pointer hit testing.
+void performSemanticInteraction(String identifier, String operation) {
+  if (!kDebugMode) throw StateError('Automation requires a debug build.');
+  if (operation != 'tap' && operation != 'focus') {
+    throw StateError('Unsupported semantic operation.');
+  }
+  final matches = _identifiedTargets()
+      .where(
+        (target) => target.node.getSemanticsData().identifier == identifier,
+      )
+      .toList();
+  if (matches.length != 1) {
+    throw StateError('Expected exactly one accessible semantic target.');
+  }
+  final target = matches.single;
+  final data = target.node.getSemanticsData();
+  final flags = data.flagsCollection;
+  if (flags.isEnabled == Tristate.isFalse) {
+    throw StateError('Semantic target is disabled.');
+  }
+  if (operation == 'focus') {
+    if (!flags.isTextField || flags.isReadOnly) {
+      throw StateError('Semantic target is not an editable field.');
+    }
+    if (flags.isFocused == Tristate.isTrue) return;
+  }
+  if (!data.hasAction(SemanticsAction.tap)) {
+    throw StateError('Semantic target does not expose a tap action.');
+  }
+  target.owner.performAction(target.node.id, SemanticsAction.tap);
 }

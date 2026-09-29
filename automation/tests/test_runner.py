@@ -13,14 +13,13 @@ class App:
 
     async def snapshot(self):
         return {
-            "schema_version": 1,
+            "schema_version": 2,
             "nodes": [
                 {"id": "counter.value", "value": str(self.value)},
                 {
                     "id": "counter.increment",
                     "label": "Increment" + (" updated" if self.changed else ""),
                     "enabled": True,
-                    "key_count": 1,
                     "actions": ["tap"],
                 },
             ],
@@ -107,9 +106,9 @@ async def test_unexpected_delta_is_not_a_pass():
         await CounterRunner(DoubleApp(), ScriptedPolicy(), {}).run(2)
 
 
-async def test_disabled_or_duplicate_keys_are_not_candidates():
+async def test_disabled_or_non_actionable_nodes_are_not_candidates():
     snapshot = await App().snapshot()
-    for field, value in [("enabled", False), ("key_count", 2), ("actions", [])]:
+    for field, value in [("enabled", False), ("actions", [])]:
         altered = deepcopy(snapshot)
         altered["nodes"][1][field] = value
         assert "tap:counter.increment" not in allowed_actions(altered)

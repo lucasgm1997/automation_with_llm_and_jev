@@ -26,7 +26,7 @@ async def inspect_ui(vm_uri: str) -> dict[str, Any]:
 
     Returns IDs, labels, supported actions and field state. Omits text-field
     values; read the app source to identify destination nodes for assertions.
-    The app must be running in debug with e2e_snapshot installed.
+    The app must be running in debug with e2e_snapshot v2 installed.
     """
     if run_lock.locked():
         return {"status": "busy"}
@@ -49,6 +49,10 @@ async def run_ui_task(
     model: str = "jev-latest",
 ) -> dict[str, Any]:
     """Run an arbitrary UI goal using semantic tap/fill actions chosen by Jev.
+
+    Requires debug extensions e2e_snapshot v2 and e2e_action. Controls need
+    unique Semantics.identifier values, not widget keys. Taps use accessibility
+    actions; this mode does not validate physical pointer hit testing.
 
     Interpret the user's natural-language request into goal, input fixtures,
     and observable success_conditions after inspecting UI/source. No per-journey

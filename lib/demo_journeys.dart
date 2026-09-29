@@ -71,7 +71,6 @@ class _DemoJourneysState extends State<DemoJourneys> {
       leading: identifiedControl(
         'journeys.close',
         IconButton(
-          key: const ValueKey('journeys.close'),
           tooltip: 'Voltar ao contador',
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -99,7 +98,6 @@ class _DemoJourneysState extends State<DemoJourneys> {
       identifiedControl(
         'login.email',
         TextField(
-          key: const ValueKey('login.email'),
           controller: email,
           keyboardType: TextInputType.emailAddress,
           decoration: const InputDecoration(labelText: 'E-mail'),
@@ -109,7 +107,6 @@ class _DemoJourneysState extends State<DemoJourneys> {
       identifiedControl(
         'login.password',
         TextField(
-          key: const ValueKey('login.password'),
           controller: password,
           obscureText: true,
           decoration: const InputDecoration(labelText: 'Senha'),
@@ -126,11 +123,7 @@ class _DemoJourneysState extends State<DemoJourneys> {
       const SizedBox(height: 24),
       identifiedControl(
         'login.submit',
-        FilledButton(
-          key: const ValueKey('login.submit'),
-          onPressed: login,
-          child: const Text('Entrar'),
-        ),
+        FilledButton(onPressed: login, child: const Text('Entrar')),
       ),
     ],
   );
@@ -149,7 +142,6 @@ class _DemoJourneysState extends State<DemoJourneys> {
       identifiedControl(
         'products.create',
         FilledButton.icon(
-          key: const ValueKey('products.create'),
           onPressed: createProduct,
           icon: const Icon(Icons.add),
           label: const Text('Cadastrar produto'),
@@ -185,7 +177,6 @@ class _DemoJourneysState extends State<DemoJourneys> {
       identifiedControl(
         'products.logout',
         OutlinedButton(
-          key: const ValueKey('products.logout'),
           onPressed: () => setState(() {
             signedIn = false;
             notice = null;
@@ -238,7 +229,6 @@ class _ProductFormState extends State<ProductForm> {
       leading: identifiedControl(
         'product.cancel',
         IconButton(
-          key: const ValueKey('product.cancel'),
           tooltip: 'Cancelar cadastro',
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -257,7 +247,6 @@ class _ProductFormState extends State<ProductForm> {
         identifiedControl(
           'product.name',
           TextField(
-            key: const ValueKey('product.name'),
             controller: name,
             decoration: const InputDecoration(labelText: 'Nome do produto'),
           ),
@@ -266,7 +255,6 @@ class _ProductFormState extends State<ProductForm> {
         identifiedControl(
           'product.price',
           TextField(
-            key: const ValueKey('product.price'),
             controller: price,
             keyboardType: const TextInputType.numberWithOptions(decimal: true),
             decoration: const InputDecoration(labelText: 'Preço'),
@@ -283,11 +271,7 @@ class _ProductFormState extends State<ProductForm> {
         const SizedBox(height: 24),
         identifiedControl(
           'product.save',
-          FilledButton(
-            key: const ValueKey('product.save'),
-            onPressed: save,
-            child: const Text('Salvar produto'),
-          ),
+          FilledButton(onPressed: save, child: const Text('Salvar produto')),
         ),
       ],
     ),

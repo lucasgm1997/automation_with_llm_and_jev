@@ -10,8 +10,10 @@ class RunStopped(Exception):
 
 
 def validate_snapshot(snapshot: dict) -> dict:
-    if snapshot.get("schema_version") != 1:
-        raise RunStopped("Unsupported semantic snapshot version.")
+    if snapshot.get("schema_version") != 2:
+        raise RunStopped(
+            "Expected semantic snapshot v2; update the Flutter instrumentation and hot restart."
+        )
     nodes = snapshot.get("nodes")
     if not isinstance(nodes, list) or len(nodes) > 200:
         raise RunStopped("Expected at most 200 identified semantic nodes.")
@@ -51,11 +53,7 @@ def allowed_actions(snapshot: dict) -> dict:
         "blocked": "Stop and return evidence when no allowed action can advance the goal.",
     }
     node = nodes.get("counter.increment", {})
-    if (
-        node.get("enabled") is True
-        and node.get("key_count") == 1
-        and "tap" in node.get("actions", [])
-    ):
+    if node.get("enabled") is True and "tap" in node.get("actions", []):
         actions["tap:counter.increment"] = {
             "operation": "tap",
             "target": "counter.increment",

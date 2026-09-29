@@ -200,7 +200,7 @@ def action_candidates(
         target = node["id"]
         if task.allowed_targets is not None and target not in task.allowed_targets:
             continue
-        if node.get("enabled") is not True or node.get("key_count") != 1:
+        if node.get("enabled") is not True:
             continue
         if "fill" in node.get("actions", []):
             for item in task.inputs:

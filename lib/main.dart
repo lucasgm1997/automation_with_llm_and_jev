@@ -100,7 +100,6 @@ class _MyHomePageState extends State<MyHomePage> {
           identifiedControl(
             'journeys.open',
             IconButton(
-              key: const ValueKey('journeys.open'),
               tooltip: 'Abrir jornadas de login e produtos',
               icon: const Icon(Icons.science_outlined),
               onPressed: () => Navigator.of(
@@ -147,7 +146,6 @@ class _MyHomePageState extends State<MyHomePage> {
         child: Semantics(
           identifier: 'counter.increment',
           child: FloatingActionButton(
-            key: const ValueKey('counter.increment'),
             onPressed: _incrementCounter,
             tooltip: 'Increment',
             child: const Icon(Icons.add),

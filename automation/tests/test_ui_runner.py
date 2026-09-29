@@ -16,7 +16,7 @@ class LoginApp:
     async def snapshot(self):
         if self.signed_in:
             return {
-                "schema_version": 1,
+                "schema_version": 2,
                 "nodes": [{"id": "account.home", "label": "Account"}],
             }
         nodes = [
@@ -27,7 +27,6 @@ class LoginApp:
                 "value": value,
                 "actions": ["tap", "fill"],
                 "enabled": True,
-                "key_count": 1,
                 "is_empty": value == "",
                 "obscured": False,
             }
@@ -39,10 +38,9 @@ class LoginApp:
                 "label": "Entrar",
                 "actions": ["tap"],
                 "enabled": True,
-                "key_count": 1,
             }
         )
-        return {"schema_version": 1, "nodes": nodes}
+        return {"schema_version": 2, "nodes": nodes}
 
     async def fill(self, key, value):
         self.calls.append(("fill", key))
@@ -129,7 +127,7 @@ async def test_empty_route_transition_is_waited_out_without_an_extra_decision(
         async def snapshot(self):
             if self.signed_in and self.empty_frames:
                 self.empty_frames -= 1
-                return {"schema_version": 1, "nodes": transition_nodes}
+                return {"schema_version": 2, "nodes": transition_nodes}
             return await super().snapshot()
 
     task, app, report = login_task(), TransitionApp(), {}
