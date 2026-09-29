@@ -1,5 +1,4 @@
 import 'package:automation_with_llm_and_jev/automation/semantic_snapshot.dart';
-import 'package:automation_with_llm_and_jev/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,7 +7,30 @@ void main() {
     tester,
   ) async {
     final semantics = tester.ensureSemantics();
-    await tester.pumpWidget(const MyApp());
+    var count = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: StatefulBuilder(
+          builder: (context, setState) => Scaffold(
+            body: Semantics(
+              identifier: 'counter.value',
+              value: '$count',
+              child: Text('$count'),
+            ),
+            floatingActionButton: MergeSemantics(
+              child: Semantics(
+                identifier: 'counter.increment',
+                child: FloatingActionButton(
+                  tooltip: 'Increment',
+                  onPressed: () => setState(() => count++),
+                  child: const Icon(Icons.add),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
 
     Map<String, dynamic> node(String id) =>
         (captureSemanticSnapshot()['nodes'] as List).singleWhere(

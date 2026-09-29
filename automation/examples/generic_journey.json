@@ -1,0 +1,17 @@
+{
+  "goal": "Abra a jornada A → B → C. Preencha o texto genérico na tela A com o input fornecido. Avance para a tela B e marque as duas opções. Avance para a tela C, confirme e verifique o resultado na página inicial.",
+  "inputs": [
+    {
+      "name": "generic_text",
+      "description": "Texto a preencher na tela A",
+      "value": "Minha jornada de teste",
+      "target": "generic.a.text"
+    }
+  ],
+  "success_conditions": [
+    {"target": "home.title", "check": "exists"},
+    {"target": "generic.result", "check": "label_contains", "input_ref": "generic_text"},
+    {"target": "generic.result", "check": "label_contains", "expected": "Opção 1: Marcada"},
+    {"target": "generic.result", "check": "label_contains", "expected": "Opção 2: Marcada"}
+  ]
+}
