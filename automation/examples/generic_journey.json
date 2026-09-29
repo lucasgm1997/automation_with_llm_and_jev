@@ -1,17 +1,198 @@
 {
-  "goal": "Abra a jornada A → B → C. Preencha o texto genérico na tela A com o input fornecido. Avance para a tela B e marque as duas opções. Avance para a tela C, confirme e verifique o resultado na página inicial.",
+  "goal": "Abra a jornada de 7 telas (A → B → C → D → E → F → G). Em cada tela de A até F, preencha todos os inputs destinados àquela tela e marque seus dois checkboxes antes de avançar. Se houver carregamento, aguarde a próxima tela. Na tela G, confirme e verifique na Home todos os dados preenchidos e as 12 opções marcadas.",
   "inputs": [
     {
-      "name": "generic_text",
-      "description": "Texto a preencher na tela A",
-      "value": "Minha jornada de teste",
+      "name": "generic_name",
+      "description": "Nome na tela A",
+      "value": "Pessoa Teste",
       "target": "generic.a.text"
+    },
+    {
+      "name": "email",
+      "description": "E-mail na tela A",
+      "value": "teste@example.test",
+      "target": "generic.a.email"
+    },
+    {
+      "name": "phone",
+      "description": "Telefone na tela A",
+      "value": "11999990000",
+      "target": "generic.a.phone"
+    },
+    {
+      "name": "company",
+      "description": "Empresa na tela A",
+      "value": "Empresa Demo",
+      "target": "generic.a.company"
+    },
+    {
+      "name": "street",
+      "description": "Rua na tela B",
+      "value": "Rua das Flores",
+      "target": "generic.b.street"
+    },
+    {
+      "name": "number",
+      "description": "Número na tela B",
+      "value": "125",
+      "target": "generic.b.number"
+    },
+    {
+      "name": "city",
+      "description": "Cidade na tela B",
+      "value": "São Paulo",
+      "target": "generic.b.city"
+    },
+    {
+      "name": "postal_code",
+      "description": "CEP na tela B",
+      "value": "01001-000",
+      "target": "generic.b.postal_code"
+    },
+    {
+      "name": "contact_name",
+      "description": "Nome do contato na tela C",
+      "value": "Contato Demo",
+      "target": "generic.c.contact_name"
+    },
+    {
+      "name": "contact_phone",
+      "description": "Telefone do contato na tela C",
+      "value": "11888880000",
+      "target": "generic.c.contact_phone"
+    },
+    {
+      "name": "category",
+      "description": "Categoria de interesse na tela D",
+      "value": "Tecnologia",
+      "target": "generic.d.category"
+    },
+    {
+      "name": "notes",
+      "description": "Preferências adicionais na tela D",
+      "value": "Contato pela manhã",
+      "target": "generic.d.notes"
+    },
+    {
+      "name": "recipient",
+      "description": "Destinatário na tela E",
+      "value": "Destinatário Demo",
+      "target": "generic.e.recipient"
+    },
+    {
+      "name": "instructions",
+      "description": "Instruções de entrega na tela E",
+      "value": "Usar entrada lateral",
+      "target": "generic.e.instructions"
+    },
+    {
+      "name": "reference",
+      "description": "Referência do pedido na tela F",
+      "value": "PEDIDO-DEMO-007",
+      "target": "generic.f.reference"
+    },
+    {
+      "name": "comments",
+      "description": "Observações finais na tela F",
+      "value": "Jornada completa de teste",
+      "target": "generic.f.comments"
     }
   ],
   "success_conditions": [
-    {"target": "home.title", "check": "exists"},
-    {"target": "generic.result", "check": "label_contains", "input_ref": "generic_text"},
-    {"target": "generic.result", "check": "label_contains", "expected": "Opção 1: Marcada"},
-    {"target": "generic.result", "check": "label_contains", "expected": "Opção 2: Marcada"}
-  ]
+    {
+      "target": "home.title",
+      "check": "exists"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "generic_name"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "email"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "phone"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "company"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "street"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "number"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "city"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "postal_code"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "contact_name"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "contact_phone"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "category"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "notes"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "recipient"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "instructions"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "reference"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "input_ref": "comments"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "expected": "Opções marcadas: 12 de 12"
+    },
+    {
+      "target": "generic.result",
+      "check": "label_contains",
+      "expected": "Jornada A → B → C → D → E → F → G concluída."
+    }
+  ],
+  "max_steps": 60
 }

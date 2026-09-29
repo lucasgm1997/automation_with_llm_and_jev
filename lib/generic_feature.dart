@@ -1,175 +1,368 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
-class GenericJourneyResult {
-  const GenericJourneyResult({
-    required this.text,
-    required this.optionOne,
-    required this.optionTwo,
+const genericJourneyLabel = 'A → B → C → D → E → F → G';
+
+typedef _Field = ({String id, String label});
+
+class _Step {
+  const _Step(
+    this.id,
+    this.title,
+    this.fields,
+    this.options, {
+    this.wait = false,
   });
 
-  final String text;
-  final bool optionOne;
-  final bool optionTwo;
+  final String id;
+  final String title;
+  final List<_Field> fields;
+  final List<String> options;
+  final bool wait;
 
-  String get summary =>
-      'Texto: $text\n'
-      'Opção 1: ${optionOne ? 'Marcada' : 'Desmarcada'}\n'
-      'Opção 2: ${optionTwo ? 'Marcada' : 'Desmarcada'}';
+  String get prefix => 'generic.$id';
 }
 
-class JourneyWithGenericPageAndField extends StatelessWidget {
+const _steps = [
+  _Step(
+    'a',
+    'Dados pessoais',
+    [
+      (id: 'text', label: 'Nome'),
+      (id: 'email', label: 'E-mail'),
+      (id: 'phone', label: 'Telefone'),
+      (id: 'company', label: 'Empresa'),
+    ],
+    ['Aceito os termos', 'Receber atualizações'],
+  ),
+  _Step(
+    'b',
+    'Endereço',
+    [
+      (id: 'street', label: 'Rua'),
+      (id: 'number', label: 'Número'),
+      (id: 'city', label: 'Cidade'),
+      (id: 'postal_code', label: 'CEP'),
+    ],
+    ['Endereço principal', 'Usar para cobrança'],
+    wait: true,
+  ),
+  _Step(
+    'c',
+    'Contato',
+    [
+      (id: 'contact_name', label: 'Nome do contato'),
+      (id: 'contact_phone', label: 'Telefone do contato'),
+    ],
+    ['Contato por e-mail', 'Contato por telefone'],
+  ),
+  _Step(
+    'd',
+    'Preferências',
+    [
+      (id: 'category', label: 'Categoria de interesse'),
+      (id: 'notes', label: 'Preferências adicionais'),
+    ],
+    ['Receber novidades', 'Receber ofertas'],
+  ),
+  _Step(
+    'e',
+    'Entrega',
+    [
+      (id: 'recipient', label: 'Destinatário'),
+      (id: 'instructions', label: 'Instruções de entrega'),
+    ],
+    ['Entregar na portaria', 'Avisar ao chegar'],
+    wait: true,
+  ),
+  _Step(
+    'f',
+    'Revisão dos dados',
+    [
+      (id: 'reference', label: 'Referência do pedido'),
+      (id: 'comments', label: 'Observações finais'),
+    ],
+    ['Revisei os dados', 'Confirmo minhas escolhas'],
+  ),
+];
+
+class GenericJourneyResult {
+  GenericJourneyResult({
+    required Map<String, String> fields,
+    required Map<String, bool> options,
+  }) : fields = Map.unmodifiable(fields),
+       options = Map.unmodifiable(options);
+
+  final Map<String, String> fields;
+  final Map<String, bool> options;
+
+  String get summary => [
+    'Opções marcadas: ${options.values.where((value) => value).length} de 12',
+    for (final step in _steps) ...[
+      '\nTela ${step.id.toUpperCase()} — ${step.title}',
+      for (final field in step.fields)
+        '${field.label}: ${fields['${step.prefix}.${field.id}'] ?? ''}',
+      for (var index = 0; index < step.options.length; index++)
+        '${step.options[index]}: ${options['${step.prefix}.option${index + 1}'] == true ? 'Marcada' : 'Desmarcada'}',
+    ],
+  ].join('\n');
+}
+
+class _Draft {
+  final fields = <String, String>{};
+  final options = <String, bool>{};
+  final random = Random();
+
+  GenericJourneyResult get result =>
+      GenericJourneyResult(fields: fields, options: options);
+}
+
+class JourneyWithGenericPageAndField extends StatefulWidget {
   const JourneyWithGenericPageAndField({super.key});
 
   @override
-  Widget build(BuildContext context) => const _PageA();
+  State<JourneyWithGenericPageAndField> createState() => _JourneyState();
 }
 
-class _PageA extends StatefulWidget {
-  const _PageA();
+class _JourneyState extends State<JourneyWithGenericPageAndField> {
+  final _draft = _Draft();
 
   @override
-  State<_PageA> createState() => _PageAState();
+  Widget build(BuildContext context) => _FormPage(index: 0, draft: _draft);
 }
 
-class _PageAState extends State<_PageA> {
-  final _text = TextEditingController();
+class _FormPage extends StatefulWidget {
+  const _FormPage({required this.index, required this.draft});
+
+  final int index;
+  final _Draft draft;
+
+  @override
+  State<_FormPage> createState() => _FormPageState();
+}
+
+class _FormPageState extends State<_FormPage> {
+  late final Map<String, TextEditingController> _controllers;
+  bool _loading = false;
+  bool _advancing = false;
+
+  _Step get _step => _steps[widget.index];
+  String get _nextLetter =>
+      String.fromCharCode('A'.codeUnitAt(0) + widget.index + 1);
+
+  @override
+  void initState() {
+    super.initState();
+    _controllers = {
+      for (final field in _step.fields)
+        field.id: TextEditingController(
+          text: widget.draft.fields['${_step.prefix}.${field.id}'] ?? '',
+        ),
+    };
+  }
 
   @override
   void dispose() {
-    _text.dispose();
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
   Future<void> _next() async {
+    if (_advancing) return;
+    _advancing = true;
     FocusScope.of(context).unfocus();
-    final result = await Navigator.of(context).push<GenericJourneyResult>(
-      MaterialPageRoute(builder: (_) => _PageB(text: _text.text)),
-    );
-    if (mounted && result != null) Navigator.of(context).pop(result);
+    try {
+      if (_step.wait) {
+        setState(() => _loading = true);
+        await Future<void>.delayed(
+          Duration(seconds: 1 + widget.draft.random.nextInt(2)),
+        );
+        if (!mounted) return;
+        setState(() => _loading = false);
+      }
+      final result = await Navigator.of(context).push<GenericJourneyResult>(
+        MaterialPageRoute(
+          builder: (_) => widget.index == _steps.length - 1
+              ? _ConfirmationPage(result: widget.draft.result)
+              : _FormPage(index: widget.index + 1, draft: widget.draft),
+        ),
+      );
+      if (mounted && result != null) Navigator.of(context).pop(result);
+    } finally {
+      _advancing = false;
+    }
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: _pageAppBar(
-      context,
-      'Tela A',
-      'generic.a',
-      'Voltar à página inicial',
-    ),
-    body: ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const Text('Etapa 1 de 3. Preencha o campo e avance para a tela B.'),
-        const SizedBox(height: 24),
-        _control(
-          'generic.a.text',
-          TextField(
-            controller: _text,
-            decoration: const InputDecoration(
-              labelText: 'Texto genérico',
-              border: OutlineInputBorder(),
+  Widget build(BuildContext context) => PopScope(
+    canPop: !_loading,
+    child: Scaffold(
+      appBar: _pageAppBar(
+        context,
+        'Tela ${_step.id.toUpperCase()} — ${_step.title}',
+        _step.prefix,
+        widget.index == 0
+            ? 'Voltar à página inicial'
+            : 'Voltar à tela anterior',
+        enabled: !_loading,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _text('${_step.prefix}.progress', 'Etapa ${widget.index + 1} de 7'),
+            const SizedBox(height: 16),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  // Two columns keep dense forms usable with the keyboard open.
+                  final width = constraints.maxWidth >= 320
+                      ? (constraints.maxWidth - 12) / 2
+                      : constraints.maxWidth;
+                  return SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 16,
+                          children: [
+                            for (final field in _step.fields)
+                              SizedBox(
+                                width: width,
+                                child: _control(
+                                  '${_step.prefix}.${field.id}',
+                                  TextField(
+                                    controller: _controllers[field.id],
+                                    enabled: !_loading,
+                                    onChanged: (value) =>
+                                        widget
+                                                .draft
+                                                .fields['${_step.prefix}.${field.id}'] =
+                                            value,
+                                    decoration: InputDecoration(
+                                      labelText: field.label,
+                                      border: const OutlineInputBorder(),
+                                      isDense: true,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        for (
+                          var index = 0;
+                          index < _step.options.length;
+                          index++
+                        )
+                          _checkbox(index),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-        ),
-        const SizedBox(height: 24),
-        _control(
-          'generic.a.next',
-          FilledButton(onPressed: _next, child: const Text('Ir para tela B')),
-        ),
-      ],
-    ),
-  );
-}
-
-class _PageB extends StatefulWidget {
-  const _PageB({required this.text});
-
-  final String text;
-
-  @override
-  State<_PageB> createState() => _PageBState();
-}
-
-class _PageBState extends State<_PageB> {
-  bool _optionOne = false;
-  bool _optionTwo = false;
-
-  Future<void> _next() async {
-    final result = await Navigator.of(context).push<GenericJourneyResult>(
-      MaterialPageRoute(
-        builder: (_) => _PageC(
-          result: GenericJourneyResult(
-            text: widget.text,
-            optionOne: _optionOne,
-            optionTwo: _optionTwo,
-          ),
+            if (_loading)
+              Semantics(
+                identifier: '${_step.prefix}.loading',
+                label: 'Carregando. Aguarde para avançar à tela $_nextLetter.',
+                liveRegion: true,
+                excludeSemantics: true,
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  child: Column(
+                    children: [
+                      LinearProgressIndicator(),
+                      SizedBox(height: 8),
+                      Text('Aguarde, preparando a próxima tela…'),
+                    ],
+                  ),
+                ),
+              ),
+            const SizedBox(height: 12),
+            SafeArea(
+              top: false,
+              child: _control(
+                '${_step.prefix}.next',
+                FilledButton(
+                  onPressed: _loading ? null : _next,
+                  child: Text('Ir para tela $_nextLetter'),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-    );
-    if (mounted && result != null) Navigator.of(context).pop(result);
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: _pageAppBar(context, 'Tela B', 'generic.b', 'Voltar à tela A'),
-    body: ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const Text('Etapa 2 de 3. Escolha as opções e avance para a tela C.'),
-        const SizedBox(height: 24),
-        _control(
-          'generic.b.option1',
-          CheckboxListTile(
-            title: const Text('Opção 1'),
-            value: _optionOne,
-            onChanged: (value) => setState(() => _optionOne = value ?? false),
-            controlAffinity: ListTileControlAffinity.leading,
-          ),
-          value: _optionOne ? 'Marcada' : 'Desmarcada',
-        ),
-        _control(
-          'generic.b.option2',
-          CheckboxListTile(
-            title: const Text('Opção 2'),
-            value: _optionTwo,
-            onChanged: (value) => setState(() => _optionTwo = value ?? false),
-            controlAffinity: ListTileControlAffinity.leading,
-          ),
-          value: _optionTwo ? 'Marcada' : 'Desmarcada',
-        ),
-        const SizedBox(height: 24),
-        _control(
-          'generic.b.next',
-          FilledButton(onPressed: _next, child: const Text('Ir para tela C')),
-        ),
-      ],
     ),
   );
+
+  Widget _checkbox(int index) {
+    final id = '${_step.prefix}.option${index + 1}';
+    final selected = widget.draft.options[id] ?? false;
+    return _control(
+      id,
+      CheckboxListTile(
+        title: Text(_step.options[index]),
+        value: selected,
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        onChanged: _loading
+            ? null
+            : (value) =>
+                  setState(() => widget.draft.options[id] = value ?? false),
+        controlAffinity: ListTileControlAffinity.leading,
+      ),
+      value: selected ? 'Marcada' : 'Desmarcada',
+    );
+  }
 }
 
-class _PageC extends StatelessWidget {
-  const _PageC({required this.result});
+class _ConfirmationPage extends StatelessWidget {
+  const _ConfirmationPage({required this.result});
 
   final GenericJourneyResult result;
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: _pageAppBar(context, 'Tela C', 'generic.c', 'Voltar à tela B'),
-    body: ListView(
-      padding: const EdgeInsets.all(24),
-      children: [
-        const Text('Etapa 3 de 3. Confira os dados e confirme a jornada.'),
-        const SizedBox(height: 24),
-        _text('generic.c.summary', result.summary),
-        const SizedBox(height: 24),
-        _control(
-          'generic.c.confirm',
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(result),
-            child: const Text('Confirmar e voltar à página inicial'),
+    appBar: _pageAppBar(
+      context,
+      'Tela G — Confirmação',
+      'generic.g',
+      'Voltar à tela F',
+    ),
+    body: Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _text(
+            'generic.g.progress',
+            'Etapa 7 de 7. Confira os dados e confirme.',
           ),
-        ),
-      ],
+          const SizedBox(height: 16),
+          Expanded(
+            child: SingleChildScrollView(
+              child: _text('generic.g.summary', result.summary),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SafeArea(
+            top: false,
+            child: _control(
+              'generic.g.confirm',
+              FilledButton(
+                onPressed: () => Navigator.of(context).pop(result),
+                child: const Text('Confirmar e voltar à página inicial'),
+              ),
+            ),
+          ),
+        ],
+      ),
     ),
   );
 }
@@ -189,15 +382,16 @@ AppBar _pageAppBar(
   BuildContext context,
   String title,
   String id,
-  String backLabel,
-) => AppBar(
+  String backLabel, {
+  bool enabled = true,
+}) => AppBar(
   title: _text('$id.title', title),
   leading: _control(
     '$id.back',
     IconButton(
       tooltip: backLabel,
       icon: const Icon(Icons.arrow_back),
-      onPressed: () => Navigator.of(context).pop(),
+      onPressed: enabled ? () => Navigator.of(context).pop() : null,
     ),
   ),
 );

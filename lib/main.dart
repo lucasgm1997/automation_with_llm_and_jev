@@ -69,7 +69,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 FilledButton.icon(
                   onPressed: _openGenericJourney,
                   icon: const Icon(Icons.route),
-                  label: const Text('Iniciar jornada A → B → C'),
+                  label: const Text('Iniciar jornada de 7 telas'),
                 ),
               ),
               const SizedBox(height: 16),
@@ -87,7 +87,7 @@ class _MyHomePageState extends State<MyHomePage> {
                 const SizedBox(height: 24),
                 identifiedText(
                   'generic.result',
-                  'Jornada A → B → C concluída.\n${result.summary}',
+                  'Jornada $genericJourneyLabel concluída.\n${result.summary}',
                 ),
               ],
             ],

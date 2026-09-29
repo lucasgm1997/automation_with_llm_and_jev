@@ -153,13 +153,13 @@ de cada chamada. `--increments` pertence apenas ao comando legado `run`.
 
 ## Jornadas disponíveis no app
 
-Abra o ícone de jornadas (frasco) no topo da tela do contador. O app oferece
+Abra o ícone de jornadas (frasco) na Home. O app oferece
 login e uma pequena lista de produtos. Credenciais demonstrativas:
 `dev@example.test` / `Demo123!`. Autenticação e armazenamento são locais, em
 memória, sem backend. Hot restart (`R` no terminal do Flutter) reinicia a sessão
 e os produtos, permitindo repetir testes desde o mesmo estado.
 
-Há quatro exemplos de especificação, que usam o mesmo executor:
+Há cinco exemplos de especificação, que usam o mesmo executor:
 
 | Arquivo em `automation/examples` | Resultado esperado |
 |---|---|
@@ -167,6 +167,34 @@ Há quatro exemplos de especificação, que usam o mesmo executor:
 | `login_invalid.json` | Mostrar erro de credenciais e continuar no login |
 | `create_product.json` | Cadastrar e encontrar nome/preço na lista |
 | `product_required.json` | Tentar salvar sem nome e conferir a validação |
+| `generic_journey.json` | Preencher 7 telas e voltar à Home com os dados e as 12 opções marcadas |
+
+Na Home, **Iniciar jornada de 7 telas** abre o fluxo A → B → C → D → E → F → G:
+
+| Tela | Conteúdo | Espera ao avançar |
+|---|---|---|
+| A — Dados pessoais | Nome, e-mail, telefone, empresa e 2 checkboxes | Não |
+| B — Endereço | Rua, número, cidade, CEP e 2 checkboxes | 1 ou 2 segundos |
+| C — Contato | Nome/telefone do contato e 2 checkboxes | Não |
+| D — Preferências | Categoria, preferências adicionais e 2 checkboxes | Não |
+| E — Entrega | Destinatário, instruções e 2 checkboxes | 1 ou 2 segundos |
+| F — Revisão dos dados | Referência, observações e 2 checkboxes | Não |
+| G — Confirmação | Resumo completo e botão para confirmar e voltar à Home | Não |
+
+As esperas de B → C e E → F usam `await Future.delayed`, sorteando novamente
+1 ou 2 segundos a cada avanço. Durante a espera, os controles ficam desabilitados
+e `generic.b.loading` ou `generic.e.loading` anuncia o carregamento. O executor
+já aguarda telas temporariamente sem ações disponíveis.
+
+Os dados são mantidos ao voltar entre etapas. Uma nova jornada começa vazia.
+Todos os controles usam `Semantics.identifier`: `generic.<letra>.<campo>`,
+`generic.<letra>.option1/option2`, `generic.<letra>.next/back`; a confirmação é
+`generic.g.confirm`. O resultado final fica em `generic.result` na Home.
+
+O exemplo fornece 16 inputs e verifica todos no resumo final, além de exigir
+as 12 opções marcadas. Usa `max_steps: 60`, pois a jornada completa precisa de
+36 ações quando executada sem desvios. O limite total do executor continua em
+40 segundos; as esperas fazem parte desse tempo.
 
 Os JSONs são exemplos reutilizáveis, não um catálogo obrigatório de prompts.
 O agente pode montar outras especificações a partir do pedido do desenvolvedor.
