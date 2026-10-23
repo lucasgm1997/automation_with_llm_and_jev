@@ -7,6 +7,12 @@ a tarefa; o Jev escolhe as interações; o executor verifica o resultado na inte
 Todas as jornadas usam o mesmo `UIRunner`: login, cadastro de produto ou um fluxo
 com várias telas. Os dados e as condições de sucesso mudam por execução.
 
+O provedor padrão é Jev. Também é possível selecionar `provider: openai` para
+OpenAI Decisions com `gpt-6-luna`, mantendo o mesmo executor e asserções.
+Configuração, comando e diferenças para Bedrock estão no
+[README](../README.md#usar-openai-decisions). Os resultados reais com Jev
+registrados neste guia não constituem validação do modelo OpenAI.
+
 ## Arquitetura e responsabilidades
 
 ```mermaid
@@ -55,7 +61,8 @@ agente que hospeda o MCP.
 | `allowed_targets` | Lista opcional dos identificadores nos quais a jornada pode interagir. |
 | `max_steps` | Limite de iterações de decisão: padrão 30, máximo 60. |
 | `min_confidence` | Confiança mínima aceita pelo executor: padrão atual `0.6`, configurável de 0 a 1. |
-| `model` | Modelo solicitado à API: padrão `jev-latest`. O relatório registra o modelo efetivamente retornado. |
+| `provider` | `jev` (padrão) ou `openai` (OpenAI Decisions direto). |
+| `model` | Quando omitido, usa `jev-latest` para Jev ou `gpt-6-luna` para OpenAI. O relatório registra o modelo retornado. |
 
 Um input pode associar explicitamente seu valor ao campo correto:
 
@@ -149,7 +156,7 @@ do relatório conta apenas toques e preenchimentos executados.
 
 ## Confiança: quem decide executar
 
-O Jev retorna `confidence`. O chamador define `min_confidence`. A comparação é
+O provedor retorna `confidence`. O chamador define `min_confidence`. A comparação é
 feita pelo executor local, depois da resposta da API:
 
 ```text
@@ -253,7 +260,8 @@ uv run --frozen --directory automation python -m jev_e2e task \
 ```
 
 Esse comando usa o limite definido no JSON ou o padrão atual `0.6`. Para usar
-`0.55`, acrescente `"min_confidence": 0.55` na raiz da especificação escolhida.
+`0.55`, passe `--min-confidence 0.55` ou acrescente `"min_confidence": 0.55`
+na raiz da especificação escolhida. `--provider openai` seleciona OpenAI Decisions.
 O CLI recebe JSON; a interpretação de linguagem natural ocorre no agente do chat.
 
 O comando `serve` inicia o servidor MCP. Após mudanças no código Python,
@@ -286,7 +294,8 @@ avanços entre telas e à confirmação final. Todas as decisões atenderam ao l
 não houve bloqueio nessa execução.
 
 O chamador informou `max_steps: 60`, também presente na especificação de exemplo.
-O trace atual não registra esse parâmetro; registra as decisões e ações realizadas.
+Esse trace histórico não registra esse parâmetro; registra as decisões e ações realizadas.
+Novas execuções também registram `max_steps`.
 O arquivo de trace é um artefato local ignorado pelo Git, portanto seu link só
 funciona em uma cópia do projeto que contenha esse arquivo.
 
@@ -337,9 +346,10 @@ O resultado da ferramenta contém status, asserções, ações, modelo, confian�
 mínima, tempos e caminho do artefato. O trace em `automation/artifacts` acrescenta
 snapshots, decisões e transições. O CLI retorna código zero apenas para `passed`.
 
-A chave `TYPESAFE_API_KEY` é carregada de `automation/.env` ou do ambiente.
+A chave `TYPESAFE_API_KEY` (Jev) ou `OPENAI_API_KEY` (OpenAI) é carregada de
+`automation/.env` ou do ambiente, conforme o provedor selecionado.
 Credenciais de teste podem usar inputs com `env` no lugar de `value`. Os valores
-conhecidos dos inputs são substituídos por referências antes do envio ao Jev e
+conhecidos dos inputs são substituídos por referências antes do envio ao provedor e
 da gravação do trace. O executor mantém os valores originais para digitação e
 asserções. Isso não é uma anonimização geral de todos os dados exibidos no app.
 
@@ -378,6 +388,7 @@ de ações, o driver e suas verificações.
 | [ui_runner.py](../automation/jev_e2e/ui_runner.py) | Ciclo de observação, decisão, interação e verificação. |
 | [task.py](../automation/jev_e2e/task.py) | Especificação, inputs, asserções, opções de ação e ocultação de valores. |
 | [policy.py](../automation/jev_e2e/policy.py) | Requisição HTTP ao Jev e leitura da decisão. |
+| [openai_policy.py](../automation/jev_e2e/openai_policy.py) | Adaptador HTTP de OpenAI Decisions para o mesmo contrato de ações. |
 | [driver.py](../automation/jev_e2e/driver.py) | Sessão Marionette, ações semânticas e entrada de texto. |
 | [semantics.py](../automation/jev_e2e/semantics.py) | Validação e comparação de snapshots. |
 | [__main__.py](../automation/jev_e2e/__main__.py) | CLI com `task` e `serve`. |

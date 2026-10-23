@@ -25,8 +25,9 @@ async def test_prepare_tool_uses_same_exclusive_lock_as_test_runs(monkeypatch):
 async def test_tool_forwards_confidence_threshold_to_executor(
     monkeypatch, options, expected,
 ):
-    async def fake_execute(vm_uri, *, model, task):
+    async def fake_execute(vm_uri, *, model, task, provider):
         assert vm_uri == "unused"
+        assert provider == "jev"
         assert task.min_confidence == expected
         return {"min_confidence": task.min_confidence}
 
@@ -38,6 +39,23 @@ async def test_tool_forwards_confidence_threshold_to_executor(
         **options,
     )
     assert result["min_confidence"] == expected
+
+
+async def test_tool_forwards_openai_provider_model_and_limits(monkeypatch):
+    async def fake_execute(vm_uri, *, model, task, provider):
+        assert provider == "openai"
+        assert model == "gpt-6-luna"
+        assert task.min_confidence == 0.55
+        assert task.max_steps == 60
+        return {"status": "blocked"}
+
+    monkeypatch.setattr(server_module, "execute", fake_execute)
+    result = await server_module.run_ui_task(
+        vm_uri="unused", goal="Open account",
+        success_conditions=[Condition(target="account.home", check="exists")],
+        provider="openai", model="gpt-6-luna", min_confidence=0.55, max_steps=60,
+    )
+    assert result["status"] == "blocked"
 
 
 async def test_stdio_tool_discovery_and_invalid_run():
@@ -64,6 +82,9 @@ async def test_stdio_tool_discovery_and_invalid_run():
         assert threshold["default"] == 0.6
         assert threshold["minimum"] == 0
         assert threshold["maximum"] == 1
+        provider = ui_tool.inputSchema["properties"]["provider"]
+        assert provider["enum"] == ["jev", "openai"]
+        assert provider["default"] == "jev"
         prepare = next(tool for tool in listing.tools if tool.name == "prepare_android_app")
         assert set(prepare.inputSchema["required"]) == {"device_id", "app_id"}
         assert prepare.inputSchema["properties"]["timeout_seconds"]["maximum"] == 300
@@ -77,6 +98,12 @@ async def test_stdio_tool_discovery_and_invalid_run():
                 "min_confidence": 1.1,
             },
         )
+        assert result.isError
+        result = await session.call_tool("run_ui_task", {
+            "vm_uri": "unused", "goal": "Open account",
+            "success_conditions": [{"target": "account.home", "check": "exists"}],
+            "provider": "unsupported",
+        })
         assert result.isError
         result = await session.call_tool("prepare_android_app", {
             "device_id": "emulator-5556", "app_id": "com.example.demo", "timeout_seconds": 0,

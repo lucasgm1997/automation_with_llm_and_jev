@@ -16,8 +16,9 @@ def test_task_cli_passes_spec_to_executor_and_returns_status(
         "min_confidence": 0.8,
     }))
 
-    async def fake_execute(vm_uri, *, task, model):
+    async def fake_execute(vm_uri, *, task, model, provider):
         assert vm_uri == "unused"
+        assert provider == "jev"
         assert model == "jev-test"
         assert task.min_confidence == 0.8
         assert task.success_conditions[0].target == "account.home"
@@ -32,6 +33,34 @@ def test_task_cli_passes_spec_to_executor_and_returns_status(
         cli.main()
     assert result.value.code == exit_code
     assert json.loads(capsys.readouterr().out)["status"] == status
+
+
+def test_cli_selects_openai_and_overrides_threshold_without_changing_spec(monkeypatch, tmp_path):
+    spec = tmp_path / "journey.json"
+    content = json.dumps({
+        "goal": "Open the account page",
+        "success_conditions": [{"target": "account.home", "check": "exists"}],
+        "max_steps": 60,
+        "min_confidence": 0.8,
+    })
+    spec.write_text(content)
+
+    async def fake_execute(vm_uri, *, task, model, provider):
+        assert provider == "openai"
+        assert model is None  # The executor resolves the provider's default.
+        assert task.min_confidence == 0.55
+        assert task.max_steps == 60
+        return {"status": "passed"}
+
+    monkeypatch.setattr(cli, "execute", fake_execute)
+    monkeypatch.setattr("sys.argv", [
+        "jev_e2e", "task", "--vm-uri", "unused", "--spec", str(spec),
+        "--provider", "openai", "--min-confidence", "0.55",
+    ])
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+    assert result.value.code == 0
+    assert spec.read_text() == content
 
 
 @pytest.mark.parametrize("status,exit_code", [("ready", 0), ("blocked", 1)])

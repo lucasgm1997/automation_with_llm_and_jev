@@ -2,7 +2,7 @@
 
 O desenvolvedor descreve uma jornada no chat do Codex/Claude. O agente interpreta
 o pedido, identifica dados e asserções, e chama `run_ui_task`. Um executor local
-lê a semântica do Flutter, consulta o Jev, toca/preenche via Marionette e verifica
+lê a semântica do Flutter, consulta Jev ou OpenAI Decisions, toca/preenche via Marionette e verifica
 o resultado em código. Não há um runner Python por jornada.
 
 O [guia de funcionamento do Jev E2E](docs/jev-e2e.md) explica a arquitetura,
@@ -12,15 +12,15 @@ concluído com 19/19 asserções aprovadas em 21,6588 segundos.
 ```mermaid
 flowchart LR
     Agent[Claude Code / Codex / VS Code] -->|1 chamada MCP| Runner[Executor Python]
-    Runner -->|estado + opções permitidas| Jev[API Jev]
-    Jev -->|escolha + confiança| Runner
+    Runner -->|estado + opções permitidas| Policy[Jev ou OpenAI Decisions]
+    Policy -->|escolha + confiança| Runner
     Runner <-->|sessão MCP persistente| Marionette[Marionette 0.6.0]
     Marionette <-->|VM Service: semântica e toques| Flutter[App Flutter debug]
     Runner -->|asserção + tempos + evidência| Report[Relatório JSON]
 ```
 
 O agente principal não participa de cada toque. A sessão Marionette e o cliente
-HTTP do Jev são reutilizados durante o teste. Este projeto não precisa de
+HTTP do provedor são reutilizados durante o teste. Este projeto não precisa de
 LangChain nem de um SDK de agentes.
 
 ## Executar
@@ -61,6 +61,74 @@ executar jornadas e `serve` para iniciar o MCP.
 Para comparar tempos, mantenha dispositivo/cenário iguais e use `--model` com
 uma versão fixa suportada pela sua conta. O tempo total inclui inicialização
 e encerramento; `setup_ms` e `timings` permitem separar esses custos.
+
+## Usar OpenAI Decisions
+
+O executor aceita dois provedores, selecionados por execução. Sem informar
+`provider`, o comportamento continua sendo Jev.
+
+| `provider` | Modelo padrão | Credencial local |
+|---|---|---|
+| `jev` | `jev-latest` | `TYPESAFE_API_KEY` |
+| `openai` | `gpt-6-luna` | `OPENAI_API_KEY` |
+
+Para OpenAI, preencha `OPENAI_API_KEY` em `automation/.env` ou no ambiente.
+Essa integração usa diretamente `POST https://api.openai.com/v1/decisions`
+com o cliente HTTP já instalado. O modelo escolhe uma das ações construídas
+pelo executor; os valores dos inputs permanecem locais. O adaptador usa o
+campo `confidence` retornado pela API e preserva as probabilidades no trace.
+Não há conversão da probabilidade da opção em confiança, troca automática de
+provedor ou redução do limite. Recusas interrompem a execução como `blocked`.
+O contrato está na [documentação de Decisions](https://developers.openai.com/api/docs/guides/decisions).
+
+Para executar a mesma especificação de sete telas, a partir da raiz:
+
+```sh
+uv run --frozen --directory automation python -m jev_e2e task \
+  --vm-uri 'http://127.0.0.1:PORT/TOKEN=/' \
+  --spec examples/generic_journey.json \
+  --provider openai --model gpt-6-luna --min-confidence 0.55
+```
+
+O arquivo já define `max_steps: 60` e as 19 asserções. A opção
+`--min-confidence` sobrescreve o limite apenas nessa execução, sem alterar o
+arquivo. O orçamento total continua em 40 segundos. Latência e confiança
+devem ser avaliadas por provedor; o mesmo limite não garante o mesmo comportamento.
+
+Para MCP, reinicie o servidor e reconecte o cliente após atualizar o código.
+Envie no chat:
+
+```text
+Leia automation/examples/generic_journey.json e use seu objetivo, os 16 inputs
+e todas as 19 condições de sucesso. Descubra a URI atual e confira inspect_ui.
+Execute run_ui_task com provider: openai, model: gpt-6-luna,
+min_confidence: 0.55 e max_steps: 60 explicitamente nos argumentos.
+Deixe o modelo conduzir a jornada. Não reduza o limite em caso de bloqueio.
+Informe status real, asserções, ações, tempo e trace; em caso de bloqueio por
+confiança, informe a ação selecionada e o confidence retornado.
+```
+
+O relatório identifica o provedor em `policy`, o modelo retornado em `model`,
+os limites usados e os tempos de inferência em `timings.openai` ou `timings.jev`.
+O status `passed` continua dependendo de todas as asserções verificadas no app.
+As execuções reais documentadas abaixo são do Jev. A integração OpenAI foi
+coberta com respostas HTTP simuladas; ainda precisa da validação real com chave.
+
+### E pelo Amazon Bedrock?
+
+O GPT-6 Luna está disponível no Bedrock, com Responses e saída estruturada.
+Na documentação consultada em 22/10/2026, Decisions não consta nas APIs
+suportadas. Portanto, `provider: openai` neste projeto acessa a API direta da
+OpenAI e não deve receber uma chave Bedrock ou apenas outro nome de modelo.
+Veja a [ficha do modelo na AWS](https://docs.aws.amazon.com/bedrock/latest/userguide/model-card-openai-gpt-6-luna.html).
+
+Para um ambiente restrito à AWS, uma integração própria pode usar Responses
+com JSON Schema para limitar a escolha às ações candidatas, mantendo Marionette,
+inputs e as 19 asserções. A autenticação pode usar credenciais AWS e SigV4,
+conforme o [guia do SDK para Bedrock](https://developers.openai.com/api/reference/python#amazon-bedrock).
+Esse adaptador ainda não está implementado aqui. Um campo de confiança gerado
+no JSON não substitui a confiança nativa de Decisions: seria necessário definir
+e avaliar esse critério antes de reutilizar o limite `0.55`.
 
 ## Retomar os testes depois de fechar o app, sem compilar novamente
 
@@ -225,7 +293,9 @@ O workspace tem o servidor `jev-e2e` em `.vscode/mcp.json`, com três ferramenta
 - `run_ui_task(vm_uri, goal, success_conditions, inputs, ...)`: executa uma jornada
   definida em tempo de execução. Esta é a ferramenta principal.
 
-O executor lê a chave TypeSafe de `automation/.env`.
+O executor lê a chave do provedor escolhido de `automation/.env` ou do ambiente.
+`run_ui_task` aceita `provider: jev` (padrão) ou `provider: openai`; `model`
+é opcional e usa o padrão do provedor quando omitido.
 
 Para cadastrar em um CLI, execute da raiz do projeto. Configure `DART_BIN`
 em `automation/.env` se o Dart correto não estiver no PATH do CLI.
@@ -289,7 +359,7 @@ conexão; o pedido em linguagem natural vai no chat.
 
 Você escreve o pedido em linguagem natural; o agente preenche esse JSON. Ele
 precisa definir o que comprova sucesso usando os IDs reais das telas, inclusive
-lendo o código para conhecer a tela de destino. O Jev escolhe ações no loop
+lendo o código para conhecer a tela de destino. O modelo escolhido decide as ações no loop
 interno; não interpreta o pedido para gerar código Python nem declara sucesso.
 O executor oferece ações com base no snapshot atual, sem nomes de telas fixos.
 `target` em um input é opcional; quando informado, restringe o campo em que ele
@@ -298,7 +368,7 @@ pode ser usado. `allowed_targets` restringe os controles autorizados na jornada.
 Para credenciais locais, substitua `value` por `env`, por exemplo
 `"env": "E2E_PASSWORD"`, e defina a variável em `automation/.env` ou no ambiente.
 Os valores dos inputs ficam no executor e são substituídos por referências
-antes de enviar estado/objetivo ao Jev ou gravar o trace. O app recebe os valores
+antes de enviar estado/objetivo ao provedor ou gravar o trace. O app recebe os valores
 reais pelo Marionette. Use nomes e descrições que expliquem o papel de cada input.
 
 O prompt interno de decisão está em `jev_e2e/policy.py`; o objetivo é o `goal`
@@ -315,9 +385,9 @@ Escreva no chat, por exemplo:
 
 O agente deve incluir `"min_confidence": 0.6` nos argumentos da ferramenta;
 escrever o valor apenas no `goal` não altera o limite. O mesmo campo é aceito
-no JSON usado pelo comando CLI `task --spec`.
+no JSON usado pelo comando CLI `task --spec`, ou pela opção `--min-confidence`.
 
-O Jev retorna a confiança da decisão, e o executor local compara esse valor
+O provedor retorna a confiança da decisão, e o executor local compara esse valor
 com o limite: `0.6` e `0.67` são aceitos com limite `0.6`; `0.59` interrompe
 a execução como `blocked`, antes da interação. O resultado e o trace registram
 `min_confidence`, e o motivo do bloqueio informa os dois valores.
@@ -479,7 +549,7 @@ implementados. Regressões fixas podem continuar determinísticas. As jornadas
 validam a integração, não demonstram superioridade da IA sobre scripts.
 
 Os nós exportados, com os inputs substituídos por referências,
-são enviados à TypeSafe. Snapshots tratados ficam no trace local.
+são enviados ao provedor selecionado (TypeSafe ou OpenAI). Snapshots tratados ficam no trace local.
 
 ## Verificação local
 
