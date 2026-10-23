@@ -1,0 +1,6 @@
+name: e2e_marionette_runtime
+publish_to: none
+environment:
+  sdk: '>=3.10.4 <4.0.0'
+dependencies:
+  marionette_mcp: 0.6.0

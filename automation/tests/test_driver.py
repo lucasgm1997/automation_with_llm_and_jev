@@ -1,9 +1,55 @@
 import asyncio
 import json
+from contextlib import asynccontextmanager
 
 import pytest
 from jev_e2e.driver import Marionette
+from jev_e2e import driver as driver_module
 from jev_e2e.semantics import RunStopped, validate_snapshot
+
+
+@pytest.mark.parametrize("binary,command,args", [
+    (None, "/local/dart", ["pub", "global", "run", "marionette_mcp"]),
+    ("/usr/local/bin/marionette_mcp", "/usr/local/bin/marionette_mcp", []),
+])
+async def test_connection_supports_native_binary_and_keeps_cleanup(monkeypatch, binary, command, args):
+    calls = []
+    if binary:
+        monkeypatch.setenv("MARIONETTE_BIN", binary)
+    else:
+        monkeypatch.delenv("MARIONETTE_BIN", raising=False)
+
+    @asynccontextmanager
+    async def stdio(params):
+        assert params.command == command and params.args == args
+        yield None, None
+
+    class Session:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            calls.append("closed")
+
+        async def initialize(self):
+            calls.append("initialized")
+
+    async def call(self, tool, arguments):
+        calls.append((tool, arguments))
+
+    monkeypatch.setattr(driver_module, "stdio_client", stdio)
+    monkeypatch.setattr(driver_module, "ClientSession", Session)
+    monkeypatch.setattr(Marionette, "call", call)
+    uri = "http://host.docker.internal:44037/token=/"
+    async with driver_module.connect(uri, dart="/local/dart"):
+        pass
+    assert calls == [
+        "initialized", ("connect", {"uri": "ws://host.docker.internal:44037/token=/ws"}),
+        ("disconnect", {}), "closed",
+    ]
 
 
 class RecordingDriver(Marionette):

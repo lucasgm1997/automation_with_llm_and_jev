@@ -23,6 +23,33 @@ O agente principal não participa de cada toque. A sessão Marionette e o client
 HTTP do provedor são reutilizados durante o teste. Este projeto não precisa de
 LangChain nem de um SDK de agentes.
 
+## Executar os serviços com Docker Compose
+
+O Compose empacota o MCP, o executor Python e o runtime Marionette. **O app e
+o emulador ficam no host.** O serviço aparece no Docker Desktop com logs,
+healthcheck e uso de recursos; os traces ficam em `automation/artifacts`.
+
+Na raiz, com Docker ativo (macOS/Linux):
+
+```sh
+test -f automation/.env || cp automation/.env.example automation/.env
+# Preencha a chave do provedor em automation/.env antes de executar jornadas.
+mkdir -p automation/artifacts
+export LOCAL_UID="$(id -u)"
+export LOCAL_GID="$(id -g)"
+docker compose up --build -d --wait
+docker compose ps
+```
+
+Conecte o cliente MCP a `http://127.0.0.1:8765/mcp`; consulte a saúde em
+`http://127.0.0.1:8765/healthz`. No Docker Desktop, a URI do app usa
+`host.docker.internal` no lugar de `127.0.0.1`. No Linux, use o override
+`compose.host.yaml` e a URI original do host.
+
+O [guia Docker](docs/docker.md) detalha configuração do cliente, rede,
+preparação do app, credenciais, logs e encerramento. A execução local sem
+Docker continua disponível abaixo.
+
 ## Executar
 
 Requisitos: Flutter 3.38.5 (Dart 3.10.4), Python 3.11+, `uv`, dispositivo com

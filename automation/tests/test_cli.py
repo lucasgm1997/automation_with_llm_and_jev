@@ -5,6 +5,27 @@ import pytest
 from jev_e2e import __main__ as cli
 
 
+@pytest.mark.parametrize("args,expected", [
+    ([], {"transport": "stdio", "host": "127.0.0.1", "port": 8765}),
+    (["--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8766"],
+     {"transport": "streamable-http", "host": "0.0.0.0", "port": 8766}),
+])
+def test_serve_cli_selects_transport(monkeypatch, args, expected):
+    calls = []
+    monkeypatch.setattr("jev_e2e.server.main", lambda **kwargs: calls.append(kwargs))
+    monkeypatch.setattr("sys.argv", ["jev_e2e", "serve", *args])
+    cli.main()
+    assert calls == [expected]
+
+
+@pytest.mark.parametrize("port", ["0", "65536"])
+def test_serve_cli_rejects_invalid_port(monkeypatch, port):
+    monkeypatch.setattr("sys.argv", ["jev_e2e", "serve", "--port", port])
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+    assert result.value.code == 2
+
+
 @pytest.mark.parametrize("status,exit_code", [("passed", 0), ("blocked", 1)])
 def test_task_cli_passes_spec_to_executor_and_returns_status(
     monkeypatch, tmp_path, capsys, status, exit_code,

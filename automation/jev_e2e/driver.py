@@ -99,8 +99,11 @@ class Marionette:
 
 @asynccontextmanager
 async def connect(uri: str, dart: str | None = None):
+    # Containers ship a native Marionette executable, including its Dart runtime.
+    binary = os.environ.get("MARIONETTE_BIN")
     params = StdioServerParameters(
-        command=dart or dart_binary(), args=["pub", "global", "run", "marionette_mcp"]
+        command=binary or dart or dart_binary(),
+        args=[] if binary else ["pub", "global", "run", "marionette_mcp"],
     )
     async with (
         stdio_client(params) as (read, write),

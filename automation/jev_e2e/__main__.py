@@ -13,7 +13,10 @@ def main():
         description="Semantic E2E runner for the Flutter example"
     )
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("serve", help="Expose the high-level MCP tool over stdio")
+    serve_command = commands.add_parser("serve", help="Expose MCP over stdio or Streamable HTTP")
+    serve_command.add_argument("--transport", choices=("stdio", "streamable-http"), default="stdio")
+    serve_command.add_argument("--host", default="127.0.0.1")
+    serve_command.add_argument("--port", type=int, default=8765)
     prepare = commands.add_parser("prepare-android", help="Open an installed debug APK and discover its VM URI")
     prepare.add_argument("--device-id", required=True)
     prepare.add_argument("--app-id", required=True)
@@ -31,7 +34,9 @@ def main():
     if args.command == "serve":
         from .server import main as serve
 
-        serve()
+        if not 1 <= args.port <= 65535:
+            parser.error("--port must be between 1 and 65535")
+        serve(transport=args.transport, host=args.host, port=args.port)
         return
     if args.command == "prepare-android":
         report = asyncio.run(prepare_android(

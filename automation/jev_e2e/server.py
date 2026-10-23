@@ -1,8 +1,11 @@
 import asyncio
-from typing import Annotated, Any
+import os
+from typing import Annotated, Any, Literal
 
 from mcp.server.fastmcp import FastMCP
 from pydantic import Field
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from .android import prepare_android
 from .app import execute
@@ -18,6 +21,8 @@ from .task import (
 
 server = FastMCP(
     "jev-flutter-e2e",
+    stateless_http=True,
+    json_response=True,
     instructions=(
         "For installed Android debug apps without a current VM URI, call prepare_android_app "
         "with device_id and app_id; include avd_name if the emulator needs to start. "
@@ -30,9 +35,25 @@ server = FastMCP(
         "If the user specifies a confidence threshold, pass it as min_confidence; "
         "mentioning it only in goal does not configure the executor. "
         "Use input env references for credentials."
+        " When hosted in Docker, the app and emulator stay on the host. "
+        "prepare_android_app is disabled there: prepare the app on the host and supply "
+        "a VM URI reachable from the container. Use host.docker.internal instead of "
+        "127.0.0.1 on Docker Desktop bridge networking; retain 127.0.0.1 in host network mode."
     ),
 )
 run_lock = asyncio.Lock()
+
+
+@server.custom_route("/healthz", methods=["GET"])
+async def health(request: Request) -> JSONResponse:
+    """Process health only; never claims that an app is connected or a test passed."""
+    return JSONResponse({
+        "status": "ok",
+        "service": "jev-e2e",
+        "busy": run_lock.locked(),
+        "marionette": "on_demand",
+        "android_prepare_enabled": os.environ.get("JEV_ANDROID_PREPARE_ENABLED", "1") != "0",
+    })
 
 
 @server.tool()
@@ -53,7 +74,15 @@ async def prepare_android_app(
     ready means connected, not a passed journey: next inspect_ui then run_ui_task.
     Preparation has its own timeout; it does not consume the 40-second test budget.
     Leaves the app, emulator and successful port forwarding available for testing.
+    Disabled in the Docker image: run preparation on the host instead.
     """
+    if os.environ.get("JEV_ANDROID_PREPARE_ENABLED", "1") == "0":
+        return {
+            "status": "blocked",
+            "reason": "Android preparation runs on the host. Open the installed debug app, "
+            "discover its current VM URI and forward its port on the host; then use "
+            "inspect_ui with a URI reachable from this container.",
+        }
     if run_lock.locked():
         return {"status": "busy"}
     async with run_lock:
@@ -129,5 +158,13 @@ async def run_ui_task(
         return await execute(vm_uri, model=model, provider=provider, task=task)
 
 
-def main():
-    server.run(transport="stdio")
+def main(
+    transport: Literal["stdio", "streamable-http"] = "stdio",
+    host: str = "127.0.0.1",
+    port: int = 8765,
+):
+    # Keep DNS rebinding protection enabled even when binding to 0.0.0.0 in Docker.
+    # Compose publishes only on the host's loopback interface.
+    server.settings.host = host
+    server.settings.port = port
+    server.run(transport=transport)

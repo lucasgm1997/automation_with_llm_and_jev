@@ -1,0 +1,18 @@
+# Allow only the sources needed to build the automation image.
+**
+!automation/
+!automation/Dockerfile
+!automation/pyproject.toml
+!automation/uv.lock
+!automation/jev_e2e/
+!automation/jev_e2e/**
+!automation/examples/
+!automation/examples/*.json
+!automation/docker/
+!automation/docker/marionette/
+!automation/docker/marionette/pubspec.yaml
+!automation/docker/marionette/pubspec.lock
+!automation/docker/marionette/bin/
+!automation/docker/marionette/bin/main.dart
+**/__pycache__/**
+**/*.pyc
