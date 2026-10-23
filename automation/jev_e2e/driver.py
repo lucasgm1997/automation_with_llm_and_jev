@@ -1,4 +1,4 @@
-"""A persistent MCP session to Marionette; no process startup per gesture."""
+"""Backend selection and persistent Marionette sessions; no startup per gesture."""
 
 import asyncio
 import json
@@ -7,6 +7,7 @@ import shutil
 from contextlib import asynccontextmanager
 from datetime import timedelta
 from pathlib import Path
+from typing import Literal
 from urllib.parse import urlsplit, urlunsplit
 
 from dotenv import dotenv_values
@@ -14,6 +15,8 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
 from .semantics import RunStopped, validate_snapshot
+
+Backend = Literal["marionette", "uiautomator2"]
 
 
 def websocket_uri(uri: str) -> str:
@@ -98,7 +101,24 @@ class Marionette:
 
 
 @asynccontextmanager
-async def connect(uri: str, dart: str | None = None):
+async def connect(
+    uri: str | None = None, dart: str | None = None, *,
+    backend: Backend = "marionette", device_id: str | None = None,
+    app_id: str | None = None,
+):
+    if backend == "uiautomator2":
+        from .android_driver import connect_android
+
+        if uri:
+            raise ValueError("uiautomator2 uses device_id/app_id; omit vm_uri.")
+        async with connect_android(device_id, app_id) as driver:
+            yield driver
+        return
+    if backend != "marionette":
+        raise ValueError("backend must be marionette or uiautomator2.")
+    if not uri or device_id or app_id:
+        raise ValueError("marionette requires vm_uri; device_id/app_id belong to uiautomator2.")
+    websocket_uri(uri)  # Reject invalid URIs before spawning a process.
     # Containers ship a native Marionette executable, including its Dart runtime.
     binary = os.environ.get("MARIONETTE_BIN")
     params = StdioServerParameters(

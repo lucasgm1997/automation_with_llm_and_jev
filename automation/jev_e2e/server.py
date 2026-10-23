@@ -9,7 +9,7 @@ from starlette.responses import JSONResponse
 
 from .android import prepare_android
 from .app import execute
-from .driver import connect
+from .driver import Backend, connect
 from .policy import Provider
 from .task import (
     DEFAULT_MIN_CONFIDENCE,
@@ -35,6 +35,9 @@ server = FastMCP(
         "If the user specifies a confidence threshold, pass it as min_confidence; "
         "mentioning it only in goal does not configure the executor. "
         "Use input env references for credentials."
+        " For framework-independent Android accessibility automation, select backend=uiautomator2 "
+        "with device_id and app_id and omit vm_uri. Open the app first; no Dart VM is needed. "
+        "inspect_ui returns Android resource IDs or generated IDs from unique text/descriptions. "
         " When hosted in Docker, the app and emulator stay on the host. "
         "prepare_android_app is disabled there: prepare the app on the host and supply "
         "a VM URI reachable from the container. Use host.docker.internal instead of "
@@ -90,16 +93,23 @@ async def prepare_android_app(
 
 
 @server.tool()
-async def inspect_ui(vm_uri: str) -> dict[str, Any]:
+async def inspect_ui(
+    vm_uri: str | None = None, backend: Backend = "marionette",
+    device_id: str | None = None, app_id: str | None = None,
+) -> dict[str, Any]:
     """Read the current identified semantics to prepare a UI task.
 
     Returns IDs, labels, supported actions and field state. Omits text-field
     values; read the app source to identify destination nodes for assertions.
-    The app must be running in debug with e2e_snapshot v2 installed.
+    Marionette requires a debug app with e2e_snapshot v2. uiautomator2 requires
+    an accessible Android app in the foreground, device_id and app_id; no VM URI.
+    Installs/starts the UI Automator helper on demand, never restarts the app.
     """
     if run_lock.locked():
         return {"status": "busy"}
-    async with run_lock, asyncio.timeout(20), connect(vm_uri) as driver:
+    async with run_lock, asyncio.timeout(20), connect(
+        vm_uri, backend=backend, device_id=device_id, app_id=app_id,
+    ) as driver:
         snapshot = await driver.snapshot()
         for node in snapshot["nodes"]:
             if node.get("role") == "textField":
@@ -109,15 +119,18 @@ async def inspect_ui(vm_uri: str) -> dict[str, Any]:
 
 @server.tool()
 async def run_ui_task(
-    vm_uri: str,
     goal: str,
     success_conditions: list[Condition],
+    vm_uri: str | None = None,
     inputs: list[InputSpec] | None = None,
     allowed_targets: list[str] | None = None,
     max_steps: int = 30,
     model: str | None = None,
     min_confidence: ConfidenceThreshold = DEFAULT_MIN_CONFIDENCE,
     provider: Provider = "jev",
+    backend: Backend = "marionette",
+    device_id: str | None = None,
+    app_id: str | None = None,
 ) -> dict[str, Any]:
     """Run a UI goal with semantic tap/fill actions chosen by Jev or OpenAI Decisions.
 
@@ -126,9 +139,14 @@ async def run_ui_task(
     Keys are read from automation/.env or the local environment. No automatic
     provider fallback or confidence threshold reduction occurs.
 
-    Requires debug extensions e2e_snapshot v2 and e2e_action. Controls need
+    Default backend=marionette requires debug extensions e2e_snapshot v2 and e2e_action. Controls need
     unique Semantics.identifier values, not widget keys. Taps use accessibility
     actions; this mode does not validate physical pointer hit testing.
+    backend=uiautomator2 uses Android accessibility through ADB, with explicit
+    device_id/app_id and no vm_uri. Supports exposed resource IDs and unique
+    text/descriptions; taps use visible bounds, fills use Android setText.
+    No Flutter instrumentation is required by that backend. It starts a device
+    helper, but does not install/restart the app or automatically scroll.
 
     Interpret the user's natural-language request into goal, input fixtures,
     and observable success_conditions after inspecting UI/source. No per-journey
@@ -155,7 +173,8 @@ async def run_ui_task(
     if run_lock.locked():
         return {"status": "busy"}
     async with run_lock:
-        return await execute(vm_uri, model=model, provider=provider, task=task)
+        return await execute(vm_uri, model=model, provider=provider, task=task,
+                             backend=backend, device_id=device_id, app_id=app_id)
 
 
 def main(

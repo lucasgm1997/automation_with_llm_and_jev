@@ -25,7 +25,10 @@ def main():
     task = commands.add_parser(
         "task", help="Run a generic UI goal from a JSON task specification"
     )
-    task.add_argument("--vm-uri", required=True)
+    task.add_argument("--vm-uri")
+    task.add_argument("--backend", choices=("marionette", "uiautomator2"), default="marionette")
+    task.add_argument("--device-id")
+    task.add_argument("--app-id")
     task.add_argument("--spec", type=Path, required=True)
     task.add_argument("--provider", choices=("jev", "openai"), default="jev")
     task.add_argument("--model", help="Default: jev-latest for Jev; gpt-6-luna for OpenAI Decisions")
@@ -48,7 +51,10 @@ def main():
     if args.min_confidence is not None:
         data["min_confidence"] = args.min_confidence
     spec = UITask.model_validate(data)
-    report = asyncio.run(execute(args.vm_uri, model=args.model, provider=args.provider, task=spec))
+    report = asyncio.run(execute(
+        args.vm_uri, model=args.model, provider=args.provider, task=spec,
+        backend=args.backend, device_id=args.device_id, app_id=args.app_id,
+    ))
     print(json.dumps(report, indent=2, ensure_ascii=False))
     raise SystemExit(0 if report["status"] == "passed" else 1)
 

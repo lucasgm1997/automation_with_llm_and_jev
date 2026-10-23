@@ -2,7 +2,7 @@
 
 O desenvolvedor descreve uma jornada no chat do Codex/Claude. O agente interpreta
 o pedido, identifica dados e asserções, e chama `run_ui_task`. Um executor local
-lê a semântica do Flutter, consulta Jev ou OpenAI Decisions, toca/preenche via Marionette e verifica
+lê a interface, consulta Jev ou OpenAI Decisions, toca/preenche via Marionette ou UI Automator e verifica
 o resultado em código. Não há um runner Python por jornada.
 
 O [guia de funcionamento do Jev E2E](docs/jev-e2e.md) explica a arquitetura,
@@ -16,6 +16,8 @@ flowchart LR
     Policy -->|escolha + confiança| Runner
     Runner <-->|sessão MCP persistente| Marionette[Marionette 0.6.0]
     Marionette <-->|VM Service: semântica e toques| Flutter[App Flutter debug]
+    Runner <-->|backend uiautomator2| Android[UI Automator via ADB]
+    Android <-->|acessibilidade Android| App[App no dispositivo]
     Runner -->|asserção + tempos + evidência| Report[Relatório JSON]
 ```
 
@@ -25,7 +27,7 @@ LangChain nem de um SDK de agentes.
 
 ## Executar os serviços com Docker Compose
 
-O Compose empacota o MCP, o executor Python e o runtime Marionette. **O app e
+O Compose empacota o MCP, o executor Python, o runtime Marionette e o cliente UI Automator. **O app e
 o emulador ficam no host.** O serviço aparece no Docker Desktop com logs,
 healthcheck e uso de recursos; os traces ficam em `automation/artifacts`.
 
@@ -42,13 +44,47 @@ docker compose ps
 ```
 
 Conecte o cliente MCP a `http://127.0.0.1:8765/mcp`; consulte a saúde em
-`http://127.0.0.1:8765/healthz`. No Docker Desktop, a URI do app usa
+`http://127.0.0.1:8765/healthz`. Para Marionette no Docker Desktop, a URI do app usa
 `host.docker.internal` no lugar de `127.0.0.1`. No Linux, use o override
 `compose.host.yaml` e a URI original do host.
 
 O [guia Docker](docs/docker.md) detalha configuração do cliente, rede,
 preparação do app, credenciais, logs e encerramento. A execução local sem
 Docker continua disponível abaixo.
+
+## Android sem dependência do Flutter
+
+O backend opcional `uiautomator2` usa a árvore de acessibilidade do Android,
+comandos de toque e `setText`. Não precisa de Dart VM Service, `flutter attach`
+ou das extensões Marionette. O app precisa estar aberto e expor seus controles
+à acessibilidade. O executor continua recebendo as decisões do Jev e verificando
+as asserções em código; não há uma chamada ao agente principal por gesto.
+
+Na ferramenta `inspect_ui`, passe:
+
+```json
+{
+  "backend": "uiautomator2",
+  "device_id": "emulator-5556",
+  "app_id": "com.example.automation_with_llm_and_jev"
+}
+```
+
+Em `run_ui_task`, use esses mesmos argumentos junto com `goal`, `inputs` e
+`success_conditions` do cenário, `min_confidence: 0.55` e `max_steps: 60`.
+Omita `vm_uri`. A imagem Docker já inclui essa dependência. Para execução local:
+
+```sh
+cd automation
+uv sync --extra android --frozen
+uv run --extra android --frozen python -m jev_e2e task \
+  --backend uiautomator2 --device-id emulator-5556 \
+  --app-id com.example.automation_with_llm_and_jev \
+  --spec examples/generic_journey.json --min-confidence 0.55
+```
+
+O [guia UI Automator](docs/uiautomator2.md) explica a conexão por Docker,
+as limitações e o experimento comparativo. Marionette permanece como backend padrão.
 
 ## Executar
 

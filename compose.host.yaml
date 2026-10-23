@@ -1,6 +1,8 @@
 # Linux Docker Engine; also usable with Docker Desktop's opt-in host networking.
 services:
   jev-e2e:
+    environment:
+      ANDROID_ADB_SERVER_HOST: "${ANDROID_ADB_SERVER_HOST:-127.0.0.1}"
     network_mode: host
     ports: !reset []
     command: ["serve", "--transport", "streamable-http", "--host", "127.0.0.1", "--port", "8765"]

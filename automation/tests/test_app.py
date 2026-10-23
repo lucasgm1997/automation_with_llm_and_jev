@@ -47,7 +47,7 @@ async def test_execute_generic_task_records_result_and_closes_driver(
     driver = Driver()
 
     @asynccontextmanager
-    async def connect(vm_uri, dart):
+    async def connect(vm_uri, dart, **options):
         assert vm_uri == "unused"
         try:
             yield driver

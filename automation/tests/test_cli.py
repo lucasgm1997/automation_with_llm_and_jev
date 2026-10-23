@@ -37,7 +37,7 @@ def test_task_cli_passes_spec_to_executor_and_returns_status(
         "min_confidence": 0.8,
     }))
 
-    async def fake_execute(vm_uri, *, task, model, provider):
+    async def fake_execute(vm_uri, *, task, model, provider, backend, device_id, app_id):
         assert vm_uri == "unused"
         assert provider == "jev"
         assert model == "jev-test"
@@ -66,7 +66,7 @@ def test_cli_selects_openai_and_overrides_threshold_without_changing_spec(monkey
     })
     spec.write_text(content)
 
-    async def fake_execute(vm_uri, *, task, model, provider):
+    async def fake_execute(vm_uri, *, task, model, provider, backend, device_id, app_id):
         assert provider == "openai"
         assert model is None  # The executor resolves the provider's default.
         assert task.min_confidence == 0.55

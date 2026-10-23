@@ -127,7 +127,7 @@ async def test_openai_execution_keeps_assertions_confidence_and_fixture_redactio
     driver = Driver()
 
     @asynccontextmanager
-    async def connect(*args):
+    async def connect(*args, **kwargs):
         try:
             yield driver
         finally:

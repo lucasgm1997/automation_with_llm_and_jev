@@ -20,7 +20,7 @@ ENV UV_PYTHON_DOWNLOADS=never \
     MARIONETTE_BIN=/usr/local/bin/marionette_mcp \
     JEV_ANDROID_PREPARE_ENABLED=0
 COPY automation/pyproject.toml automation/uv.lock ./
-RUN uv sync --frozen --no-dev --no-install-project --no-cache
+RUN uv sync --frozen --no-dev --no-install-project --no-cache --extra android
 COPY --from=marionette /build/marionette_mcp /usr/local/bin/marionette_mcp
 COPY automation/jev_e2e ./jev_e2e
 COPY automation/examples ./examples

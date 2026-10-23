@@ -25,7 +25,7 @@ async def test_prepare_tool_uses_same_exclusive_lock_as_test_runs(monkeypatch):
 async def test_tool_forwards_confidence_threshold_to_executor(
     monkeypatch, options, expected,
 ):
-    async def fake_execute(vm_uri, *, model, task, provider):
+    async def fake_execute(vm_uri, *, model, task, provider, backend, device_id, app_id):
         assert vm_uri == "unused"
         assert provider == "jev"
         assert task.min_confidence == expected
@@ -42,7 +42,7 @@ async def test_tool_forwards_confidence_threshold_to_executor(
 
 
 async def test_tool_forwards_openai_provider_model_and_limits(monkeypatch):
-    async def fake_execute(vm_uri, *, model, task, provider):
+    async def fake_execute(vm_uri, *, model, task, provider, backend, device_id, app_id):
         assert provider == "openai"
         assert model == "gpt-6-luna"
         assert task.min_confidence == 0.55

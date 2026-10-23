@@ -24,6 +24,11 @@ Compose não hospeda os modelos nem acrescenta suporte a Bedrock.
 
 ## Iniciar no Docker Desktop (macOS/Windows)
 
+Para usar Android sem Dart VM Service, veja o [backend UI Automator](uiautomator2.md).
+A imagem inclui esse cliente e acessa o ADB do host. Selecione
+`backend=uiautomator2`, `device_id` e `app_id` nas ferramentas MCP, omitindo
+`vm_uri`. O restante deste guia descreve principalmente a conexão Marionette.
+
 Use Docker Engine/Docker Desktop ativo e Compose **2.24.4 ou posterior**.
 Execute na raiz do projeto. Em macOS/Linux:
 

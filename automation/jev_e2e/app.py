@@ -9,7 +9,7 @@ from uuid import uuid4
 import httpx
 from dotenv import dotenv_values
 
-from .driver import connect
+from .driver import Backend, connect
 from .openai_policy import OpenAIDecisionsPolicy
 from .policy import DEFAULT_MODELS, JevPolicy, Provider
 from .semantics import RunStopped
@@ -20,11 +20,14 @@ ARTIFACTS = Path(__file__).resolve().parents[1] / "artifacts"
 
 
 async def execute(
-    vm_uri: str,
+    vm_uri: str | None = None,
     *,
     task: UITask,
     model: str | None = None,
     provider: Provider = "jev",
+    backend: Backend = "marionette",
+    device_id: str | None = None,
+    app_id: str | None = None,
 ) -> dict:
     # Re-read per run without mutating the persistent MCP server environment.
     config = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
@@ -32,6 +35,7 @@ async def execute(
     report = {
         "scenario": "ui_task",
         "policy": provider,
+        "backend": backend,
         "status": "failed",
         "min_confidence": task.min_confidence,
         "max_steps": task.max_steps,
@@ -53,7 +57,7 @@ async def execute(
             async with httpx.AsyncClient(http2=True, timeout=10) as client:
                 policy_class = OpenAIDecisionsPolicy if provider == "openai" else JevPolicy
                 selected = policy_class(client, model, api_key)
-                async with connect(vm_uri, dart) as driver:
+                async with connect(vm_uri, dart, backend=backend, device_id=device_id, app_id=app_id) as driver:
                     report["setup_ms"] = round((perf_counter() - started) * 1000, 2)
                     try:
                         await UIRunner(driver, selected, task, values, report).run()
@@ -81,7 +85,7 @@ async def execute(
         # MCP context managers may wrap transport errors in ExceptionGroup.
         report.update(
             status="failed",
-            reason=f"Transport or response failure ({type(exc).__name__}); verify the VM URI, Dart SDK and debug extension.",
+            reason=f"Transport or response failure ({type(exc).__name__}); verify the selected backend's connection and app state.",
         )
     finally:
         if values is not None:
