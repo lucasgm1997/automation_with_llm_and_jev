@@ -1,11 +1,17 @@
 import asyncio
-from typing import Any, Literal
+from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
 from .app import execute
 from .driver import connect
-from .task import Condition, InputSpec, UITask
+from .task import (
+    DEFAULT_MIN_CONFIDENCE,
+    Condition,
+    ConfidenceThreshold,
+    InputSpec,
+    UITask,
+)
 
 server = FastMCP(
     "jev-flutter-e2e",
@@ -14,7 +20,9 @@ server = FastMCP(
         "run_ui_task once with the user's goal, input fixtures and observable success_conditions. "
         "Derive real semantic IDs; do not invent them. Define assertions that prove the requested "
         "result, not merely that a button is visible. Jev owns the inner action loop. "
-        "Use input env references for credentials. run_counter_e2e is a legacy smoke test only."
+        "If the user specifies a confidence threshold, pass it as min_confidence; "
+        "mentioning it only in goal does not configure the executor. "
+        "Use input env references for credentials."
     ),
 )
 run_lock = asyncio.Lock()
@@ -47,6 +55,7 @@ async def run_ui_task(
     allowed_targets: list[str] | None = None,
     max_steps: int = 30,
     model: str = "jev-latest",
+    min_confidence: ConfidenceThreshold = DEFAULT_MIN_CONFIDENCE,
 ) -> dict[str, Any]:
     """Run an arbitrary UI goal using semantic tap/fill actions chosen by Jev.
 
@@ -62,6 +71,10 @@ async def run_ui_task(
     {target: 'products.list', check: 'label_contains', input_ref: 'product_name'}.
     These are examples: use IDs actually present in this app. Credentials should
     be env references, not embedded in goal. No model-generated free-text input.
+    min_confidence is the inclusive local acceptance threshold (0 to 1, default
+    0.6). Map a user request such as "use confidence 0.6" to min_confidence=0.6,
+    not just goal text. Below it, stop as blocked before acting. This does not
+    change Jev's returned confidence or bypass independent UI assertions.
     Returns assertions and evidence; blocked means the test did not pass.
     """
     task = UITask(
@@ -70,31 +83,12 @@ async def run_ui_task(
         success_conditions=success_conditions,
         allowed_targets=allowed_targets,
         max_steps=max_steps,
+        min_confidence=min_confidence,
     )
     if run_lock.locked():
         return {"status": "busy"}
     async with run_lock:
         return await execute(vm_uri, model=model, task=task)
-
-
-@server.tool()
-async def run_counter_e2e(
-    vm_uri: str,
-    increments: int = 3,
-    policy: Literal["jev", "scripted"] = "jev",
-    model: str = "jev-latest",
-) -> dict[str, Any]:
-    """Tap the example Flutter counter and verify its semantic value.
-
-    Pass the Dart VM service URI from flutter run. Jev makes the decisions
-    inside a bounded local loop; scripted is an explicit no-AI transport test.
-    Returns status, independent assertion, timing and a local JSON trace path.
-    This tool changes the counter. Do not run other UI drivers concurrently.
-    """
-    if run_lock.locked():
-        return {"status": "busy", "reason": "This server already has an active UI run."}
-    async with run_lock:
-        return await execute(vm_uri, increments, policy, model)
 
 
 def main():

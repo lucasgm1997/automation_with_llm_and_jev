@@ -2,11 +2,24 @@
 
 import json
 import re
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from .runner import RunStopped, validate_snapshot
+from .semantics import RunStopped, validate_snapshot
+
+
+DEFAULT_MIN_CONFIDENCE = 0.6
+ConfidenceThreshold = Annotated[
+    float,
+    Field(
+        strict=True,
+        ge=0,
+        le=1,
+        allow_inf_nan=False,
+        description="Minimum returned Jev confidence accepted by the local executor (inclusive).",
+    ),
+]
 
 
 class InputSpec(BaseModel):
@@ -57,6 +70,7 @@ class UITask(BaseModel):
     success_conditions: list[Condition] = Field(min_length=1, max_length=20)
     allowed_targets: list[str] | None = None
     max_steps: int = Field(default=30, ge=1, le=60)
+    min_confidence: ConfidenceThreshold = DEFAULT_MIN_CONFIDENCE
 
     @model_validator(mode="after")
     def names(self):

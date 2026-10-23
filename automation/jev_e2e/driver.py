@@ -13,7 +13,7 @@ from dotenv import dotenv_values
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
-from .runner import RunStopped, validate_snapshot
+from .semantics import RunStopped, validate_snapshot
 
 
 def websocket_uri(uri: str) -> str:

@@ -1,7 +1,8 @@
 import json
+from itertools import count
 
 import pytest
-from jev_e2e.runner import RunStopped
+from jev_e2e.semantics import RunStopped, validate_snapshot
 from jev_e2e.task import Condition, InputSpec, TaskValues, UITask, action_candidates
 from jev_e2e.ui_runner import UIRunner
 from pydantic import ValidationError
@@ -56,9 +57,10 @@ class LoginApp:
 
 
 class SequencePolicy:
-    def __init__(self, targets):
+    def __init__(self, targets, confidence=1.0):
         self.targets = iter(targets)
         self.requests = []
+        self.confidence = confidence
 
     async def choose(self, state, candidates):
         self.requests.append({"state": state, "candidates": candidates})
@@ -66,10 +68,10 @@ class SequencePolicy:
         selected = next(
             key for key, action in candidates.items() if action.get("target") == target
         )
-        return {"action": selected, "confidence": 1.0}
+        return {"action": selected, "confidence": self.confidence}
 
 
-def login_task():
+def login_task(**options):
     return UITask(
         goal="Sign in using the supplied credentials",
         inputs=[
@@ -87,11 +89,12 @@ def login_task():
             ),
         ],
         success_conditions=[Condition(target="account.home", check="exists")],
+        **options,
     )
 
 
 async def test_generic_login_uses_discovered_targets_and_keeps_values_local():
-    task, app, report = login_task(), LoginApp(), {}
+    task, app, report = login_task(max_steps=3), LoginApp(), {}
     values = TaskValues(task, {"TEST_PASSWORD": "a-secret-test-password"})
     policy = SequencePolicy(["auth.email", "auth.password", "auth.submit"])
     await UIRunner(app, policy, task, values, report).run()
@@ -102,6 +105,72 @@ async def test_generic_login_uses_discovered_targets_and_keeps_values_local():
     assert "a-secret-test-password" not in serialized
     assert "person@example.test" not in serialized
     assert "<input:password>" in serialized
+
+
+@pytest.mark.parametrize(
+    "options,confidence,accepted",
+    [
+        ({}, 0.59, False),
+        ({}, 0.6, True),
+        ({}, 0.67, True),
+        ({"min_confidence": 0.7}, 0.67, False),
+        ({"min_confidence": 0.6}, 0.59, False),
+        ({"min_confidence": 0.6}, 0.6, True),
+        ({"min_confidence": 0.6}, 0.67, True),
+        ({"min_confidence": 0.9}, 0.89, False),
+        ({"min_confidence": 0}, 0, True),
+        ({"min_confidence": 1}, 1, True),
+    ],
+)
+async def test_confidence_threshold_controls_actions_and_preserves_assertions(
+    options, confidence, accepted,
+):
+    task, app, report = login_task(**options), LoginApp(), {}
+    runner = UIRunner(
+        app,
+        SequencePolicy(["auth.email", "auth.password", "auth.submit"], confidence),
+        task,
+        TaskValues(task, {"TEST_PASSWORD": "a-secret-test-password"}),
+        report,
+    )
+    if accepted:
+        await runner.run()
+        assert report["status"] == "passed"
+        assert report["actions"] == 3
+        assert all(check["passed"] for check in report["assertions"])
+    else:
+        with pytest.raises(RunStopped, match="below configured") as error:
+            await runner.run()
+        assert str(confidence) in str(error.value)
+        assert str(task.min_confidence) in str(error.value)
+        assert app.calls == []
+        assert report["actions"] == 0
+        assert not all(check["passed"] for check in report["assertions"])
+    assert report["min_confidence"] == options.get("min_confidence", 0.6)
+
+
+@pytest.mark.parametrize(
+    "confidence", [None, True, "0.9", -0.1, 1.1, float("nan"), float("inf")]
+)
+async def test_invalid_policy_confidence_is_rejected_even_with_zero_threshold(confidence):
+    task, app = login_task(min_confidence=0), LoginApp()
+    with pytest.raises(RunStopped, match="invalid confidence"):
+        await UIRunner(
+            app,
+            SequencePolicy(["auth.email"], confidence),
+            task,
+            TaskValues(task, {"TEST_PASSWORD": "secret"}),
+            {},
+        ).run()
+    assert app.calls == []
+
+
+@pytest.mark.parametrize(
+    "threshold", [None, True, "0.6", -0.1, 1.1, float("nan"), float("inf")]
+)
+def test_invalid_confidence_threshold_is_rejected(threshold):
+    with pytest.raises(ValidationError):
+        login_task(min_confidence=threshold)
 
 
 async def test_conditions_already_true_do_not_claim_a_journey_was_executed():
@@ -154,10 +223,11 @@ async def test_scope_and_field_bindings_constrain_candidates():
     assert actions[0]["input"] == "email"
 
 
-async def test_arbitrary_selector_from_policy_is_rejected():
+@pytest.mark.parametrize("action", ["tap:delete.all", "done"])
+async def test_arbitrary_selector_or_completion_from_policy_is_rejected(action):
     class BadPolicy:
         async def choose(self, state, candidates):
-            return {"action": "tap:delete.all", "confidence": 1}
+            return {"action": action, "confidence": 1}
 
     task, app = login_task(), LoginApp()
     with pytest.raises(RunStopped, match="outside"):
@@ -165,6 +235,65 @@ async def test_arbitrary_selector_from_policy_is_rejected():
             app, BadPolicy(), task, TaskValues(task, {"TEST_PASSWORD": "secret"}), {}
         ).run()
     assert app.calls == []
+
+
+async def test_discards_decision_when_ui_changes_during_inference():
+    task, app, report = login_task(max_steps=1), LoginApp(), {}
+
+    class ChangingPolicy(SequencePolicy):
+        async def choose(self, state, candidates):
+            app.fields["auth.email"] = "external-change@example.test"
+            return await super().choose(state, candidates)
+
+    with pytest.raises(RunStopped, match="Step budget"):
+        await UIRunner(
+            app,
+            ChangingPolicy(["auth.email"]),
+            task,
+            TaskValues(task, {"TEST_PASSWORD": "secret"}),
+            report,
+        ).run()
+    assert app.calls == []
+    assert any("discarded" in event for event in report["events"])
+
+
+async def test_action_without_observed_effect_is_not_repeated(monkeypatch):
+    class UnchangedApp(LoginApp):
+        async def tap(self, key):
+            self.calls.append(("tap", key))
+
+    # Advance the observation deadline without a real three-second wait.
+    ticks = count(step=4)
+    monkeypatch.setattr("jev_e2e.ui_runner.perf_counter", lambda: next(ticks))
+    task, app, report = login_task(), UnchangedApp(), {}
+    with pytest.raises(RunStopped, match="No semantic change"):
+        await UIRunner(
+            app,
+            SequencePolicy(["auth.submit"]),
+            task,
+            TaskValues(task, {"TEST_PASSWORD": "secret"}),
+            report,
+        ).run()
+    assert app.calls == [("tap", "auth.submit")]
+    assert report.get("status") != "passed"
+
+
+@pytest.mark.parametrize("field,value", [("enabled", False), ("actions", [])])
+async def test_disabled_or_non_actionable_nodes_are_not_candidates(field, value):
+    task = login_task()
+    snapshot = await LoginApp().snapshot()
+    snapshot["nodes"][-1][field] = value
+    candidates = action_candidates(
+        task, snapshot, TaskValues(task, {"TEST_PASSWORD": "secret"}), {}
+    )
+    assert all(action.get("target") != "auth.submit" for action in candidates.values())
+
+
+async def test_duplicate_identifiers_rejected():
+    snapshot = await LoginApp().snapshot()
+    snapshot["nodes"].append(snapshot["nodes"][0])
+    with pytest.raises(RunStopped, match="duplicate"):
+        validate_snapshot(snapshot)
 
 
 async def test_negative_test_passes_only_on_expected_error():

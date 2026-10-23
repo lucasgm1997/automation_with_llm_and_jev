@@ -5,6 +5,10 @@ o pedido, identifica dados e asserções, e chama `run_ui_task`. Um executor loc
 lê a semântica do Flutter, consulta o Jev, toca/preenche via Marionette e verifica
 o resultado em código. Não há um runner Python por jornada.
 
+O [guia de funcionamento do Jev E2E](docs/jev-e2e.md) explica a arquitetura,
+o ciclo de decisões, a configuração de confiança e o teste das sete telas
+concluído com 19/19 asserções aprovadas em 21,6588 segundos.
+
 ```mermaid
 flowchart LR
     Agent[Claude Code / Codex / VS Code] -->|1 chamada MCP| Runner[Executor Python]
@@ -37,27 +41,19 @@ Mantenha `flutter run` aberto. Copie a URI **Dart VM Service** impressa no
 terminal, incluindo o token. Não use o endereço da página DevTools. O executor
 aceita tanto `http://127.0.0.1:PORT/TOKEN=/` quanto a URI WebSocket correspondente.
 
-Em outro terminal, valide primeiro a infraestrutura, sem inferência:
-
-```sh
-export DART_BIN="$HOME/fvm/versions/3.38.5/bin/dart"
-uv run --frozen --directory automation python -m jev_e2e run \
-  --vm-uri 'http://127.0.0.1:PORT/TOKEN=/' --policy scripted
-```
-
 Para usar o Jev, copie `automation/.env.example` para `automation/.env` e
 preencha `TYPESAFE_API_KEY` **localmente**. Esse arquivo é ignorado pelo git.
 Também é possível definir a variável no ambiente; ela tem precedência.
 
 ```sh
-uv run --frozen --directory automation python -m jev_e2e run \
-  --vm-uri 'http://127.0.0.1:PORT/TOKEN=/' --policy jev --increments 3
+uv run --frozen --directory automation python -m jev_e2e task \
+  --vm-uri 'http://127.0.0.1:PORT/TOKEN=/' --spec examples/generic_journey.json
 ```
 
-O processo termina com código zero apenas para `passed`. O resumo contém valor
-inicial, esperado e observado, número de toques, modelo efetivo e tempos por
-fase. `automation/artifacts/*.json` guarda snapshots, decisões e ações. O modo
-`scripted` é uma referência determinística, **não mede o Jev**.
+O processo termina com código zero apenas para `passed`. O resumo contém as
+asserções, número de ações, limite de confiança, modelo efetivo e tempos por
+fase. `automation/artifacts/*.json` guarda snapshots, decisões e ações.
+O CLI oferece `task` para executar jornadas e `serve` para iniciar o MCP.
 
 Para comparar tempos, mantenha dispositivo/cenário iguais e use `--model` com
 uma versão fixa suportada pela sua conta. O tempo total inclui inicialização
@@ -65,12 +61,11 @@ e encerramento; `setup_ms` e `timings` permitem separar esses custos.
 
 ## Usar por MCP
 
-O workspace tem o servidor `jev-e2e` em `.vscode/mcp.json`, com três ferramentas:
+O workspace tem o servidor `jev-e2e` em `.vscode/mcp.json`, com duas ferramentas:
 
 - `inspect_ui(vm_uri)`: descobre os IDs, labels e ações da tela atual.
 - `run_ui_task(vm_uri, goal, success_conditions, inputs, ...)`: executa uma jornada
   definida em tempo de execução. Esta é a ferramenta principal.
-- `run_counter_e2e(...)`: mantém compatibilidade com a prova inicial do contador.
 
 O executor lê a chave TypeSafe de `automation/.env`.
 
@@ -91,8 +86,8 @@ O arquivo `.vscode/mcp.json` configura o host MCP do VS Code; o Codex usa seu
 próprio cadastro em `~/.codex/config.toml`.
 
 Se o Codex já estava aberto durante o cadastro, saia e abra `codex` novamente
-na pasta do projeto. Use `/mcp` para conferir o servidor `jev-e2e` e a
-as três ferramentas. Reinicie o cliente após atualizar o servidor para carregar
+na pasta do projeto. Use `/mcp` para conferir o servidor `jev-e2e` e
+as duas ferramentas. Reinicie o processo MCP e reconecte o cliente para carregar
 a nova lista.
 
 ### Onde escrever o pedido
@@ -149,7 +144,29 @@ antes de enviar estado/objetivo ao Jev ou gravar o trace. O app recebe os valore
 reais pelo Marionette. Use nomes e descrições que expliquem o papel de cada input.
 
 O prompt interno de decisão está em `jev_e2e/policy.py`; o objetivo é o `goal`
-de cada chamada. `--increments` pertence apenas ao comando legado `run`.
+de cada chamada. Todas as jornadas são executadas pelo mesmo `UIRunner`.
+
+### Limite de confiança por execução
+
+`run_ui_task` aceita `min_confidence`, um número de 0 a 1, com padrão `0.6`.
+Escreva no chat, por exemplo:
+
+> Execute a jornada de 7 telas usando automation/examples/generic_journey.json.
+> Na chamada run_ui_task, passe min_confidence: 0.6 e mantenha max_steps: 60.
+> Verifique todas as 19 asserções e informe o limite usado no resultado.
+
+O agente deve incluir `"min_confidence": 0.6` nos argumentos da ferramenta;
+escrever o valor apenas no `goal` não altera o limite. O mesmo campo é aceito
+no JSON usado pelo comando CLI `task --spec`.
+
+O Jev retorna a confiança da decisão, e o executor local compara esse valor
+com o limite: `0.6` e `0.67` são aceitos com limite `0.6`; `0.59` interrompe
+a execução como `blocked`, antes da interação. O resultado e o trace registram
+`min_confidence`, e o motivo do bloqueio informa os dois valores.
+
+Reduzir o limite permite aceitar decisões de menor confiança; não aumenta a
+confiança do modelo nem substitui as asserções finais. Após atualizar o código,
+reinicie o processo MCP e reconecte o cliente para carregar o novo parâmetro.
 
 ## Jornadas disponíveis no app
 
@@ -261,15 +278,16 @@ O snapshot agora usa `schema_version: 2`. Ao atualizar a instrumentação, faça
 driver. Copie essa instrumentação e sua inicialização em debug ao integrar
 outro projeto; somente instalar o pacote Marionette não cria essas extensões.
 
-Para uma asserção, exponha um valor acessível da própria interface, como no
-`counter.value`. Um snapshot contém, por exemplo:
+Para uma asserção, exponha um valor acessível da própria interface, como em
+`generic.a.text`. Um snapshot contém, por exemplo:
 
 ```json
 {
   "schema_version": 2,
   "nodes": [
-    {"id": "counter.value", "label": "Counter", "value": "2", "actions": []},
-    {"id": "counter.increment", "label": "Increment", "enabled": true,
+    {"id": "generic.a.text", "label": "Nome", "value": "Pessoa Teste",
+     "enabled": true, "actions": ["tap", "fill"]},
+    {"id": "generic.a.next", "label": "Ir para tela B", "enabled": true,
      "actions": ["tap"]}
   ]
 }
@@ -285,8 +303,8 @@ ajuda a leitura, mas precisa de IDs estáveis para este contrato.
   ausência, igualdade de valor, conteúdo da label e variação numérica. Todas
   precisam passar. O Jev não pode declarar o teste concluído.
 - As opções são toques e preenchimentos observáveis, `wait` e `blocked`.
-  IDs únicos, enabled, ação e confiança mínima de 0,7 são verificados. O limiar
-  é inicial e precisa de calibração; não garante acerto.
+  IDs únicos, enabled, ação e `min_confidence` (padrão 0,6) são verificados.
+  O limiar precisa de calibração; não garante acerto.
 - O executor relê a UI após a inferência e descarta decisões de um snapshot
   alterado. A leitura e o toque ainda não são uma operação atômica.
 - Após uma ação, há até três segundos para observar uma mudança semântica;
@@ -302,7 +320,7 @@ Rolagem, permissões nativas, recuperação com outra LLM e CI ainda não estão
 implementados. Regressões fixas podem continuar determinísticas. As jornadas
 validam a integração, não demonstram superioridade da IA sobre scripts.
 
-No modo `jev`, os nós exportados, com os inputs substituídos por referências,
+Os nós exportados, com os inputs substituídos por referências,
 são enviados à TypeSafe. Snapshots tratados ficam no trace local.
 
 ## Verificação local

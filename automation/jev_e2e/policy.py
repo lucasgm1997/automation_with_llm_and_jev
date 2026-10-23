@@ -18,7 +18,7 @@ class JevPolicy:
         self.api_key = api_key or os.environ.get("TYPESAFE_API_KEY")
         if not self.api_key:
             raise ValueError(
-                "Set TYPESAFE_API_KEY locally, or use --policy scripted for the infrastructure smoke test."
+                "Set TYPESAFE_API_KEY in automation/.env or the local environment."
             )
 
     async def choose(self, state: dict, actions: dict) -> dict:
@@ -61,13 +61,3 @@ class JevPolicy:
             "confidence": answer["confidence"],
             "probabilities": answer["probabilities"],
         }
-
-
-class ScriptedPolicy:
-    """Explicit baseline for testing the transport; does not call an AI model."""
-
-    actual_model = "scripted-no-model"
-
-    async def choose(self, state: dict, actions: dict) -> dict:
-        action = "tap:counter.increment"
-        return {"action": action if action in actions else "blocked", "confidence": 1.0}

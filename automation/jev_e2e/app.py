@@ -10,8 +10,8 @@ import httpx
 from dotenv import dotenv_values
 
 from .driver import connect
-from .policy import JevPolicy, ScriptedPolicy
-from .runner import CounterRunner, RunStopped
+from .policy import JevPolicy
+from .semantics import RunStopped
 from .task import TaskValues, UITask
 from .ui_runner import UIRunner
 
@@ -20,51 +20,34 @@ ARTIFACTS = Path(__file__).resolve().parents[1] / "artifacts"
 
 async def execute(
     vm_uri: str,
-    increments: int = 3,
-    policy: str = "jev",
-    model: str = "jev-latest",
     *,
-    task: UITask | None = None,
+    task: UITask,
+    model: str = "jev-latest",
 ) -> dict:
     # Re-read per run without mutating the persistent MCP server environment.
     config = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
     api_key = os.environ.get("TYPESAFE_API_KEY") or config.get("TYPESAFE_API_KEY")
     dart = os.environ.get("DART_BIN") or config.get("DART_BIN")
-    if policy not in {"jev", "scripted"}:
-        raise ValueError("policy must be jev or scripted")
-    if not 1 <= increments <= 10:
-        raise ValueError("increments must be between 1 and 10")
-    if task is not None and policy != "jev":
-        raise ValueError("Generic UI tasks use the Jev policy")
     report = {
-        "scenario": "ui_task" if task else "counter",
-        "policy": policy,
+        "scenario": "ui_task",
+        "policy": "jev",
         "status": "failed",
+        "min_confidence": task.min_confidence,
         "events": [],
     }
     started = perf_counter()
     selected = None
     values = None
     try:
-        if task is not None:
-            values = TaskValues(task, {**config, **os.environ})
+        values = TaskValues(task, {**config, **os.environ})
         # Includes process startup, connection, inference and UI interactions.
         async with asyncio.timeout(40):
             async with httpx.AsyncClient(http2=True, timeout=10) as client:
-                selected = (
-                    JevPolicy(client, model, api_key)
-                    if policy == "jev"
-                    else ScriptedPolicy()
-                )
+                selected = JevPolicy(client, model, api_key)
                 async with connect(vm_uri, dart) as driver:
                     report["setup_ms"] = round((perf_counter() - started) * 1000, 2)
                     try:
-                        if task is not None:
-                            await UIRunner(driver, selected, task, values, report).run()
-                        else:
-                            await CounterRunner(driver, selected, report).run(
-                                increments
-                            )
+                        await UIRunner(driver, selected, task, values, report).run()
                     except RunStopped as exc:
                         report.update(status="blocked", reason=str(exc))
                     except (RuntimeError, ValueError) as exc:

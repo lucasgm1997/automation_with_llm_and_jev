@@ -2,7 +2,7 @@ import asyncio
 import math
 from time import perf_counter
 
-from .runner import RunStopped, fingerprint, validate_snapshot
+from .semantics import RunStopped, fingerprint, validate_snapshot
 from .task import TaskValues, UITask, action_candidates, evaluate
 
 
@@ -10,6 +10,7 @@ class UIRunner:
     def __init__(self, driver, policy, task: UITask, values: TaskValues, report: dict):
         self.driver, self.policy, self.task, self.values = driver, policy, task, values
         self.report = report
+        self.report["min_confidence"] = task.min_confidence
         self.events = report.setdefault("events", [])
         self.filled = {}
 
@@ -115,9 +116,14 @@ class UIRunner:
             if (
                 type(confidence) not in {int, float}
                 or not math.isfinite(confidence)
-                or not 0.7 <= confidence <= 1
+                or not 0 <= confidence <= 1
             ):
-                raise RunStopped("Invalid or insufficient policy confidence.")
+                raise RunStopped("Policy returned invalid confidence.")
+            if confidence < self.task.min_confidence:
+                raise RunStopped(
+                    f"Policy confidence {confidence} below configured "
+                    f"min_confidence {self.task.min_confidence}."
+                )
             if action["operation"] == "blocked":
                 raise RunStopped(
                     "No useful action identified; return evidence to the calling agent."

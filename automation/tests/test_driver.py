@@ -3,7 +3,7 @@ import json
 
 import pytest
 from jev_e2e.driver import Marionette
-from jev_e2e.runner import RunStopped, validate_snapshot
+from jev_e2e.semantics import RunStopped, validate_snapshot
 
 
 class RecordingDriver(Marionette):

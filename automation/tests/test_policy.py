@@ -8,7 +8,7 @@ from jev_e2e.policy import JevPolicy
 
 async def test_typesafe_request_and_response_contract(monkeypatch):
     monkeypatch.setenv("TYPESAFE_API_KEY", "unit-test-token")
-    state = {"ui": {"nodes": []}, "remaining_increments": 1}
+    state = {"ui": {"nodes": []}, "goal": "Wait for the login form to load"}
     actions = {"blocked": "Stop", "wait": "Wait"}
 
     def handle(request):
