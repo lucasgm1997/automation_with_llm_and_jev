@@ -97,7 +97,8 @@ class UIRunner:
                 }
             )
             decision = await self.timed(
-                "jev", self.policy.choose(state, self.values.redact(candidates))
+                self.report.get("policy", "jev"),
+                self.policy.choose(state, self.values.redact(candidates)),
             )
             selected = decision.get("action")
             confidence = decision.get("confidence")

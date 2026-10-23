@@ -10,7 +10,8 @@ import httpx
 from dotenv import dotenv_values
 
 from .driver import connect
-from .policy import JevPolicy
+from .openai_policy import OpenAIDecisionsPolicy
+from .policy import DEFAULT_MODELS, JevPolicy, Provider
 from .semantics import RunStopped
 from .task import TaskValues, UITask
 from .ui_runner import UIRunner
@@ -22,28 +23,36 @@ async def execute(
     vm_uri: str,
     *,
     task: UITask,
-    model: str = "jev-latest",
+    model: str | None = None,
+    provider: Provider = "jev",
 ) -> dict:
     # Re-read per run without mutating the persistent MCP server environment.
     config = dotenv_values(Path(__file__).resolve().parents[1] / ".env")
-    api_key = os.environ.get("TYPESAFE_API_KEY") or config.get("TYPESAFE_API_KEY")
     dart = os.environ.get("DART_BIN") or config.get("DART_BIN")
     report = {
         "scenario": "ui_task",
-        "policy": "jev",
+        "policy": provider,
         "status": "failed",
         "min_confidence": task.min_confidence,
+        "max_steps": task.max_steps,
+        "actions": 0,
         "events": [],
     }
     started = perf_counter()
     selected = None
     values = None
     try:
+        if provider not in DEFAULT_MODELS:
+            raise ValueError("provider must be jev or openai.")
+        model = model if model is not None else DEFAULT_MODELS[provider]
+        key_name = "OPENAI_API_KEY" if provider == "openai" else "TYPESAFE_API_KEY"
+        api_key = os.environ.get(key_name) or config.get(key_name)
         values = TaskValues(task, {**config, **os.environ})
         # Includes process startup, connection, inference and UI interactions.
         async with asyncio.timeout(40):
             async with httpx.AsyncClient(http2=True, timeout=10) as client:
-                selected = JevPolicy(client, model, api_key)
+                policy_class = OpenAIDecisionsPolicy if provider == "openai" else JevPolicy
+                selected = policy_class(client, model, api_key)
                 async with connect(vm_uri, dart) as driver:
                     report["setup_ms"] = round((perf_counter() - started) * 1000, 2)
                     try:

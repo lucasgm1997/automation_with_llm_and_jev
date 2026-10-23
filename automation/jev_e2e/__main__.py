@@ -24,7 +24,9 @@ def main():
     )
     task.add_argument("--vm-uri", required=True)
     task.add_argument("--spec", type=Path, required=True)
-    task.add_argument("--model", default="jev-latest")
+    task.add_argument("--provider", choices=("jev", "openai"), default="jev")
+    task.add_argument("--model", help="Default: jev-latest for Jev; gpt-6-luna for OpenAI Decisions")
+    task.add_argument("--min-confidence", type=float, help="Override the JSON confidence threshold (0 to 1)")
     args = parser.parse_args()
     if args.command == "serve":
         from .server import main as serve
@@ -37,8 +39,11 @@ def main():
         ))
         print(json.dumps(report, indent=2, ensure_ascii=False))
         raise SystemExit(0 if report["status"] == "ready" else 1)
-    spec = UITask.model_validate_json(args.spec.read_text())
-    report = asyncio.run(execute(args.vm_uri, model=args.model, task=spec))
+    data = json.loads(args.spec.read_text())
+    if args.min_confidence is not None:
+        data["min_confidence"] = args.min_confidence
+    spec = UITask.model_validate(data)
+    report = asyncio.run(execute(args.vm_uri, model=args.model, provider=args.provider, task=spec))
     print(json.dumps(report, indent=2, ensure_ascii=False))
     raise SystemExit(0 if report["status"] == "passed" else 1)
 

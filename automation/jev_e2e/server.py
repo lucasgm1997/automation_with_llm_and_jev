@@ -7,6 +7,7 @@ from pydantic import Field
 from .android import prepare_android
 from .app import execute
 from .driver import connect
+from .policy import Provider
 from .task import (
     DEFAULT_MIN_CONFIDENCE,
     Condition,
@@ -24,7 +25,8 @@ server = FastMCP(
         "For natural-language UI tests, inspect_ui and/or read the app source, then call "
         "run_ui_task once with the user's goal, input fixtures and observable success_conditions. "
         "Derive real semantic IDs; do not invent them. Define assertions that prove the requested "
-        "result, not merely that a button is visible. Jev owns the inner action loop. "
+        "result, not merely that a button is visible. The selected provider owns the inner action loop. "
+        "provider defaults to jev; use openai for OpenAI Decisions with gpt-6-luna. "
         "If the user specifies a confidence threshold, pass it as min_confidence; "
         "mentioning it only in goal does not configure the executor. "
         "Use input env references for credentials."
@@ -84,10 +86,16 @@ async def run_ui_task(
     inputs: list[InputSpec] | None = None,
     allowed_targets: list[str] | None = None,
     max_steps: int = 30,
-    model: str = "jev-latest",
+    model: str | None = None,
     min_confidence: ConfidenceThreshold = DEFAULT_MIN_CONFIDENCE,
+    provider: Provider = "jev",
 ) -> dict[str, Any]:
-    """Run an arbitrary UI goal using semantic tap/fill actions chosen by Jev.
+    """Run a UI goal with semantic tap/fill actions chosen by Jev or OpenAI Decisions.
+
+    provider=jev uses TYPESAFE_API_KEY and defaults model to jev-latest.
+    provider=openai uses OPENAI_API_KEY and defaults model to gpt-6-luna.
+    Keys are read from automation/.env or the local environment. No automatic
+    provider fallback or confidence threshold reduction occurs.
 
     Requires debug extensions e2e_snapshot v2 and e2e_action. Controls need
     unique Semantics.identifier values, not widget keys. Taps use accessibility
@@ -104,7 +112,7 @@ async def run_ui_task(
     min_confidence is the inclusive local acceptance threshold (0 to 1, default
     0.6). Map a user request such as "use confidence 0.6" to min_confidence=0.6,
     not just goal text. Below it, stop as blocked before acting. This does not
-    change Jev's returned confidence or bypass independent UI assertions.
+    change the model's returned confidence or bypass independent UI assertions.
     Returns assertions and evidence; blocked means the test did not pass.
     """
     task = UITask(
@@ -118,7 +126,7 @@ async def run_ui_task(
     if run_lock.locked():
         return {"status": "busy"}
     async with run_lock:
-        return await execute(vm_uri, model=model, task=task)
+        return await execute(vm_uri, model=model, provider=provider, task=task)
 
 
 def main():

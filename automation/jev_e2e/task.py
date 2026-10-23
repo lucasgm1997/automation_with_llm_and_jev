@@ -17,7 +17,7 @@ ConfidenceThreshold = Annotated[
         ge=0,
         le=1,
         allow_inf_nan=False,
-        description="Minimum returned Jev confidence accepted by the local executor (inclusive).",
+        description="Minimum returned model confidence accepted by the local executor (inclusive).",
     ),
 ]
 
