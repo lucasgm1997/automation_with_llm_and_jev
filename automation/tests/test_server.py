@@ -74,6 +74,8 @@ async def test_stdio_tool_discovery_and_invalid_run():
             "prepare_android_app",
             "inspect_ui",
             "run_ui_task",
+            "start_console_capture", "read_console", "start_network_capture",
+            "list_network_requests", "get_network_request", "stop_capture",
         }
         assert all(tool.outputSchema["type"] == "object" for tool in listing.tools)
         ui_tool = next(tool for tool in listing.tools if tool.name == "run_ui_task")

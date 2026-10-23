@@ -22,6 +22,12 @@ aberta durante toda a jornada. Manter ambos juntos preserva o contrato stdio e
 o bloqueio de concorrência do executor. Jev e OpenAI são APIs externas; o
 Compose não hospeda os modelos nem acrescenta suporte a Bedrock.
 
+As ferramentas de [Console e Network](runtime-evidence.md) também rodam nesse
+mesmo serviço. Elas mantêm conexões próprias com o Dart VM Service entre
+chamadas MCP, sem depender da sessão Marionette ou de executar uma jornada.
+Não exigem API key de modelo, janela do DevTools, nova porta publicada ou
+outro container. O histórico é limitado e fica na memória do serviço.
+
 ## Iniciar no Docker Desktop (macOS/Windows)
 
 Para usar Android sem Dart VM Service, veja o [backend UI Automator](uiautomator2.md).

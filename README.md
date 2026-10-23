@@ -52,6 +52,34 @@ O [guia Docker](docs/docker.md) detalha configuração do cliente, rede,
 preparação do app, credenciais, logs e encerramento. A execução local sem
 Docker continua disponível abaixo.
 
+## Console e Network como ferramentas para o agente
+
+O MCP também fornece evidências de runtime e rede **independentes dos testes
+de UI**. O agente pode consultar essas ferramentas durante o desenvolvimento,
+inclusive enquanto você usa o aplicativo manualmente. Não é necessário abrir
+o Flutter DevTools nem adicionar um coletor Marionette ao app para as fontes
+já expostas pelo Dart VM Service.
+
+| Ferramenta | Uso |
+| --- | --- |
+| `start_console_capture` | Inicia captura de Stdout, Stderr, Logging e eventos Flutter.Error disponíveis. |
+| `read_console` | Consulta mensagens, erros e stack traces, com filtros e cursor. |
+| `start_network_capture` | Habilita e acompanha o profiling HTTP dos isolates compatíveis. |
+| `list_network_requests` | Consulta método, URL, status, duração, requisições pendentes e falhas. |
+| `get_network_request` | Consulta headers e, opcionalmente, previews dos corpos. |
+| `stop_capture` | Encerra somente a captura indicada. |
+
+Comece uma captura com `{"vm_uri": "http://host.docker.internal:PORTA/TOKEN=/"}`
+no Docker Desktop. Use o `capture_id` retornado na ferramenta de consulta,
+por exemplo `read_console` ou `list_network_requests`. Inicie antes de
+reproduzir o problema. Esses recursos não chamam Jev/OpenAI, não exigem chave
+de modelo e não dependem de `run_ui_task`.
+
+O [guia de Console e Network](docs/runtime-evidence.md) explica filtros,
+paginação, ciclo de vida, cobertura e validação. O app continua precisando de
+um VM Service acessível; mensagens produzidas pela IDE/build e logs nativos
+do Android não fazem parte dessa coleta.
+
 ## Android sem dependência do Flutter
 
 O backend opcional `uiautomator2` usa a árvore de acessibilidade do Android,
@@ -348,13 +376,16 @@ Referências: [ADB: atividades e encaminhamento de portas](https://developer.and
 
 ## Usar por MCP
 
-O workspace tem o servidor `jev-e2e` em `.vscode/mcp.json`, com três ferramentas:
+O workspace tem o servidor `jev-e2e` em `.vscode/mcp.json`. Para preparação e UI:
 
 - `prepare_android_app(device_id, app_id, avd_name?, ...)`: abre o APK debug
   instalado e devolve uma URI atual, sem depender de `flutter run`.
 - `inspect_ui(vm_uri)`: descobre os IDs, labels e ações da tela atual.
 - `run_ui_task(vm_uri, goal, success_conditions, inputs, ...)`: executa uma jornada
   definida em tempo de execução. Esta é a ferramenta principal.
+
+As ferramentas independentes de Console e Network estão descritas no
+[guia de evidências de runtime](docs/runtime-evidence.md).
 
 O executor lê a chave do provedor escolhido de `automation/.env` ou do ambiente.
 `run_ui_task` aceita `provider: jev` (padrão) ou `provider: openai`; `model`
@@ -378,7 +409,7 @@ próprio cadastro em `~/.codex/config.toml`.
 
 Se o Codex já estava aberto durante o cadastro, saia e abra `codex` novamente
 na pasta do projeto. Use `/mcp` para conferir o servidor `jev-e2e` e
-as três ferramentas. Reinicie o processo MCP e reconecte o cliente para carregar
+as ferramentas de UI, Console e Network. Reinicie o processo MCP e reconecte o cliente para carregar
 a nova lista.
 
 ### Onde escrever o pedido
