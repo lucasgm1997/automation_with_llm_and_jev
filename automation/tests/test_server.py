@@ -9,6 +9,18 @@ import jev_e2e.server as server_module
 from jev_e2e.task import Condition
 
 
+async def test_prepare_tool_uses_same_exclusive_lock_as_test_runs(monkeypatch):
+    async def prepare(device_id, app_id, avd_name, timeout_seconds):
+        assert server_module.run_lock.locked()
+        assert await server_module.inspect_ui("unused") == {"status": "busy"}
+        return {"status": "ready", "vm_uri": "http://127.0.0.1:51000/token=/"}
+
+    monkeypatch.setattr(server_module, "prepare_android", prepare)
+    result = await server_module.prepare_android_app("emulator-5556", "com.example.demo")
+    assert result["status"] == "ready"
+    assert not server_module.run_lock.locked()
+
+
 @pytest.mark.parametrize("options,expected", [({}, 0.6), ({"min_confidence": 0.8}, 0.8)])
 async def test_tool_forwards_confidence_threshold_to_executor(
     monkeypatch, options, expected,
@@ -41,6 +53,7 @@ async def test_stdio_tool_discovery_and_invalid_run():
         await session.initialize()
         listing = await session.list_tools()
         assert {tool.name for tool in listing.tools} == {
+            "prepare_android_app",
             "inspect_ui",
             "run_ui_task",
         }
@@ -51,6 +64,9 @@ async def test_stdio_tool_discovery_and_invalid_run():
         assert threshold["default"] == 0.6
         assert threshold["minimum"] == 0
         assert threshold["maximum"] == 1
+        prepare = next(tool for tool in listing.tools if tool.name == "prepare_android_app")
+        assert set(prepare.inputSchema["required"]) == {"device_id", "app_id"}
+        assert prepare.inputSchema["properties"]["timeout_seconds"]["maximum"] == 300
         # Invalid arguments must fail before connecting to a device or API.
         result = await session.call_tool(
             "run_ui_task",
@@ -61,4 +77,8 @@ async def test_stdio_tool_discovery_and_invalid_run():
                 "min_confidence": 1.1,
             },
         )
+        assert result.isError
+        result = await session.call_tool("prepare_android_app", {
+            "device_id": "emulator-5556", "app_id": "com.example.demo", "timeout_seconds": 0,
+        })
         assert result.isError

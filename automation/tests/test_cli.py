@@ -32,3 +32,22 @@ def test_task_cli_passes_spec_to_executor_and_returns_status(
         cli.main()
     assert result.value.code == exit_code
     assert json.loads(capsys.readouterr().out)["status"] == status
+
+
+@pytest.mark.parametrize("status,exit_code", [("ready", 0), ("blocked", 1)])
+def test_prepare_cli_reports_connection_status(monkeypatch, capsys, status, exit_code):
+    async def prepare(device_id, app_id, avd_name, timeout_seconds):
+        assert (device_id, app_id, avd_name, timeout_seconds) == (
+            "emulator-5556", "com.example.demo", "Test_AVD", 150,
+        )
+        return {"status": status}
+
+    monkeypatch.setattr(cli, "prepare_android", prepare)
+    monkeypatch.setattr("sys.argv", [
+        "jev_e2e", "prepare-android", "--device-id", "emulator-5556",
+        "--app-id", "com.example.demo", "--avd-name", "Test_AVD", "--timeout-seconds", "150",
+    ])
+    with pytest.raises(SystemExit) as result:
+        cli.main()
+    assert result.value.code == exit_code
+    assert json.loads(capsys.readouterr().out)["status"] == status

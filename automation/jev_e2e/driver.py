@@ -19,7 +19,7 @@ from .semantics import RunStopped, validate_snapshot
 def websocket_uri(uri: str) -> str:
     parsed = urlsplit(uri)
     if parsed.scheme not in {"http", "https", "ws", "wss"} or not parsed.hostname:
-        raise ValueError("Use the Dart VM service URI printed by flutter run.")
+        raise ValueError("Use a Dart VM service URI from prepare_android_app or Flutter debug output.")
     path = parsed.path.rstrip("/")
     if not path.endswith("/ws"):
         path += "/ws"

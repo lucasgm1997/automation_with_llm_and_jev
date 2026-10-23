@@ -37,9 +37,11 @@ uv sync --frozen --directory automation
 "$FLUTTER_BIN" run -d emulator-5554 --debug
 ```
 
-Mantenha `flutter run` aberto. Copie a URI **Dart VM Service** impressa no
-terminal, incluindo o token. Não use o endereço da página DevTools. O executor
-aceita tanto `http://127.0.0.1:PORT/TOKEN=/` quanto a URI WebSocket correspondente.
+Na primeira instalação, `flutter run` compila, instala e abre o app. Copie a URI
+**Dart VM Service** impressa no terminal, incluindo o token. Não use o endereço
+da página DevTools. O executor aceita tanto `http://127.0.0.1:PORT/TOKEN=/`
+quanto a URI WebSocket correspondente. Depois da instalação, o APK debug pode
+ser reaberto e testado sem `flutter run`, como descrito abaixo.
 
 Para usar o Jev, copie `automation/.env.example` para `automation/.env` e
 preencha `TYPESAFE_API_KEY` **localmente**. Esse arquivo é ignorado pelo git.
@@ -53,16 +55,172 @@ uv run --frozen --directory automation python -m jev_e2e task \
 O processo termina com código zero apenas para `passed`. O resumo contém as
 asserções, número de ações, limite de confiança, modelo efetivo e tempos por
 fase. `automation/artifacts/*.json` guarda snapshots, decisões e ações.
-O CLI oferece `task` para executar jornadas e `serve` para iniciar o MCP.
+O CLI oferece `prepare-android` para preparar o APK instalado, `task` para
+executar jornadas e `serve` para iniciar o MCP.
 
 Para comparar tempos, mantenha dispositivo/cenário iguais e use `--model` com
 uma versão fixa suportada pela sua conta. O tempo total inclui inicialização
 e encerramento; `setup_ms` e `timings` permitem separar esses custos.
 
+## Retomar os testes depois de fechar o app, sem compilar novamente
+
+O APK continua instalado quando o app ou o emulador é fechado. Para testar
+essa mesma versão, basta abrir o emulador e o app e conectar o executor ao
+novo processo. Não é necessário rodar `flutter run`, manter o VS Code em
+debug ou recompilar o projeto.
+
+O app precisa estar em execução **durante o teste**. Neste projeto, o APK deve
+ser debug e conter Marionette e as extensões `e2e_snapshot` e `e2e_action`.
+Apenas a flag Android `debuggable` não adiciona essas extensões. Um APK release
+não atende aos requisitos deste executor.
+
+### Procedimento manual
+
+Os comandos abaixo usam `emulator-5556` e o pacote deste projeto. Ajuste o serial
+conforme a saída de `adb devices -l`. Se `adb` não estiver no PATH, use
+`~/Library/Android/sdk/platform-tools/adb` no macOS.
+
+1. **Abra o emulador, se ele estiver fechado.** Use o Device Manager do Android
+   Studio ou consulte os AVDs e inicie o desejado pelo terminal:
+
+   ```sh
+   "$ANDROID_HOME/emulator/emulator" -list-avds
+   "$ANDROID_HOME/emulator/emulator" -avd NOME_DO_AVD -port 5556
+   ```
+
+   No macOS, o SDK costuma estar em `~/Library/Android/sdk`; use esse caminho
+   no lugar de `$ANDROID_HOME` caso a variável não esteja configurada. O nome
+   do AVD é o retornado por `-list-avds`, não o nome de modelo mostrado pelo
+   `flutter devices`. A porta `5556` precisa estar livre; ela determina o serial
+   `emulator-5556`. Aguarde o Android iniciar e execute os próximos comandos em
+   outro terminal.
+
+2. **Confira o dispositivo e abra o APK instalado.** Também é possível tocar
+   no ícone do app no launcher do Android.
+
+   ```sh
+   adb devices -l
+   adb -s emulator-5556 shell am start -W -n com.example.automation_with_llm_and_jev/.MainActivity
+   ```
+
+   Esse comando abre o app existente; não compila nem instala nada. Se o
+   aplicativo já estava rodando, sua Activity é trazida para frente.
+
+3. **Consulte o VM Service do processo atual.** Depois de a Home aparecer:
+
+   ```sh
+   app_pid=$(adb -s emulator-5556 shell pidof com.example.automation_with_llm_and_jev | tr -d '\r')
+   adb -s emulator-5556 logcat -d --pid="$app_pid" | grep -i 'Dart VM service is listening' | tail -n 1
+   ```
+
+   `app_pid` deve conter o PID do app aberto. Uma saída de exemplo é:
+
+   ```text
+   The Dart VM service is listening on http://127.0.0.1:44037/0AqwVz0cr3Q=/
+   ```
+
+   **Porta e token podem mudar quando o processo reinicia.** Não reutilize os
+   valores deste exemplo ou de uma execução anterior. Se a linha ainda não
+   aparecer, aguarde o app iniciar e consulte novamente. Se os logs já foram
+   descartados pelo Android, será necessário reabrir o processo para gerar uma
+   nova linha. Fechar o processo perde o estado mantido somente em memória.
+
+4. **Encaminhe a porta do emulador para o computador.** Para a URI de exemplo:
+
+   ```sh
+   adb -s emulator-5556 forward tcp:44037 tcp:44037
+   adb forward --list
+   ```
+
+   O primeiro `tcp:44037` é a porta do **computador**; o segundo é a porta do
+   **emulador**, que deve corresponder ao log. A saída pode ser o número da
+   porta ou nenhuma linha; confira se houve erro. Se a porta local estiver
+   ocupada, deixe o ADB selecionar uma livre:
+
+   ```sh
+   adb -s emulator-5556 forward tcp:0 tcp:44037
+   ```
+
+   Nesse caso, use a porta retornada pelo comando na URI para o MCP, mantendo
+   o token do log. Por exemplo, se retornar `51234`, a URI será
+   `http://127.0.0.1:51234/0AqwVz0cr3Q=/`. O `127.0.0.1` do log originalmente
+   aponta para o emulador; o encaminhamento permite acessá-lo pelo computador.
+
+5. **Retome os testes pelo MCP.** Primeiro chame `inspect_ui` com a URI do
+   computador. Depois chame `run_ui_task` com o objetivo, inputs e condições
+   do cenário. Para a jornada de sete telas, preserve todos os 16 inputs e
+   as 19 condições de `automation/examples/generic_journey.json` e passe
+   explicitamente `min_confidence: 0.55` e `max_steps: 60` nos argumentos.
+   O Jev conduz as interações. Só considere aprovado o resultado `passed`
+   com as 19 asserções aprovadas.
+
+Se o processo do app continuar vivo, a conexão anterior pode continuar válida;
+`inspect_ui` permite conferir isso. Após um reinício, descubra a URI novamente.
+Reabrir o APK executa a versão instalada: alterações posteriores no código-fonte
+exigem atualizar o app por build/instalação ou pelo fluxo de desenvolvimento
+apropriado. Dados persistidos ficam no dispositivo; estado somente em memória,
+como o resultado da jornada deste exemplo, é reiniciado com o processo.
+
+### Preparação automática pelo MCP ou CLI
+
+Após atualizar o código, reinicie o servidor MCP e reconecte o cliente para
+carregar a ferramenta nova. O CLI executa diretamente a versão local.
+
+`prepare_android_app` executa a preparação antes do teste:
+
+```json
+{
+  "device_id": "emulator-5556",
+  "app_id": "com.example.automation_with_llm_and_jev"
+}
+```
+
+Se o emulador estiver fechado, acrescente `avd_name` com o nome exato retornado
+por `emulator -list-avds`. A ferramenta inicia esse AVD na porta indicada pelo
+serial, aguarda o boot, abre o APK instalado, consulta os logs do PID atual,
+cria um encaminhamento em porta local livre e verifica o PID e as extensões
+E2E no VM Service. Ela retorna `status: ready` e `vm_uri`; use essa URI em
+`inspect_ui` e depois em `run_ui_task`. `ready` não significa teste aprovado.
+
+O mesmo preparo pode ser executado no terminal:
+
+```sh
+uv run --frozen --directory automation python -m jev_e2e prepare-android \
+  --device-id emulator-5556 \
+  --app-id com.example.automation_with_llm_and_jev
+```
+
+Adicione `--avd-name NOME_DO_AVD` para permitir iniciar um emulador fechado.
+O preparo tem timeout próprio de 120 segundos (configurável até 300), separado
+dos 40 segundos da jornada. Ele preserva os dados, não força o encerramento de
+um app existente e deixa app, emulador e encaminhamento disponíveis para o
+teste. Se os logs atuais não contiverem a URI ou a instrumentação estiver
+ausente, retorna um bloqueio em vez de reiniciar ou aprovar a jornada.
+
+O processo que executa a preparação precisa ter acesso ao SDK, ao ADB e às
+portas locais. Se o ambiente do agente bloquear esse acesso com
+`Operation not permitted`, execute a preparação no seu terminal e forneça a
+`vm_uri` retornada ao agente. A ferramenta não remove restrições do ambiente.
+
+Fluxo manual validado após encerrar e reabrir o APK em 22/10/2026, no
+`emulator-5556`: `passed`, 19/19 asserções, 36 ações, 20,2148 segundos,
+`min_confidence: 0.55`, `max_steps: 60`, modelo `jev-1.14.0`.
+Trace local: `automation/artifacts/20261023T020539Z-5cd8e5f6.json`
+(nome em UTC). Esse resultado valida a jornada após a reabertura manual;
+não é uma medição da preparação automática.
+A preparação automática foi coberta por testes com ADB e respostas do VM Service
+simulados. A validação completa dela no emulador ainda depende de um ambiente
+com acesso ao ADB.
+
+Referências: [ADB: atividades e encaminhamento de portas](https://developer.android.com/tools/adb),
+[iniciar o emulador pelo terminal](https://developer.android.com/studio/run/emulator-commandline).
+
 ## Usar por MCP
 
-O workspace tem o servidor `jev-e2e` em `.vscode/mcp.json`, com duas ferramentas:
+O workspace tem o servidor `jev-e2e` em `.vscode/mcp.json`, com três ferramentas:
 
+- `prepare_android_app(device_id, app_id, avd_name?, ...)`: abre o APK debug
+  instalado e devolve uma URI atual, sem depender de `flutter run`.
 - `inspect_ui(vm_uri)`: descobre os IDs, labels e ações da tela atual.
 - `run_ui_task(vm_uri, goal, success_conditions, inputs, ...)`: executa uma jornada
   definida em tempo de execução. Esta é a ferramenta principal.
@@ -87,7 +245,7 @@ próprio cadastro em `~/.codex/config.toml`.
 
 Se o Codex já estava aberto durante o cadastro, saia e abra `codex` novamente
 na pasta do projeto. Use `/mcp` para conferir o servidor `jev-e2e` e
-as duas ferramentas. Reinicie o processo MCP e reconecte o cliente para carregar
+as três ferramentas. Reinicie o processo MCP e reconecte o cliente para carregar
 a nova lista.
 
 ### Onde escrever o pedido
@@ -125,8 +283,8 @@ O Codex inspeciona UI/código, interpreta o pedido e prepara **uma** chamada
 }
 ```
 
-Substitua a URI pelo endereço real, que pode mudar ao reiniciar o app. O MCP
-não descobre esse endereço automaticamente. `/mcp` serve para inspecionar a
+Substitua a URI pelo endereço real, que pode mudar ao reiniciar o app. No Android,
+`prepare_android_app` pode descobrir esse endereço automaticamente. `/mcp` serve para inspecionar a
 conexão; o pedido em linguagem natural vai no chat.
 
 Você escreve o pedido em linguagem natural; o agente preenche esse JSON. Ele

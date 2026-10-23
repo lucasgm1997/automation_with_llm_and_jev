@@ -1,8 +1,10 @@
 import asyncio
-from typing import Any
+from typing import Annotated, Any
 
 from mcp.server.fastmcp import FastMCP
+from pydantic import Field
 
+from .android import prepare_android
 from .app import execute
 from .driver import connect
 from .task import (
@@ -16,6 +18,9 @@ from .task import (
 server = FastMCP(
     "jev-flutter-e2e",
     instructions=(
+        "For installed Android debug apps without a current VM URI, call prepare_android_app "
+        "with device_id and app_id; include avd_name if the emulator needs to start. "
+        "Use its returned vm_uri with inspect_ui and run_ui_task. Preparation is not a test result. "
         "For natural-language UI tests, inspect_ui and/or read the app source, then call "
         "run_ui_task once with the user's goal, input fixtures and observable success_conditions. "
         "Derive real semantic IDs; do not invent them. Define assertions that prove the requested "
@@ -26,6 +31,31 @@ server = FastMCP(
     ),
 )
 run_lock = asyncio.Lock()
+
+
+@server.tool()
+async def prepare_android_app(
+    device_id: str,
+    app_id: str,
+    avd_name: str | None = None,
+    timeout_seconds: Annotated[int, Field(ge=5, le=300)] = 120,
+) -> dict[str, Any]:
+    """Open an installed Android debug APK and return its current host VM URI.
+
+    Works without flutter run, flutter attach or an attached IDE. If device_id
+    is disconnected, avd_name starts that existing emulator on the requested
+    emulator-N port. Never installs, clears data, force-stops or restarts an
+    existing app. An existing app is brought to the foreground with its state.
+    Discovers the service from the current app PID's logs, forwards a free host
+    port and verifies the live PID and E2E extensions. Requires SDK/ADB access.
+    ready means connected, not a passed journey: next inspect_ui then run_ui_task.
+    Preparation has its own timeout; it does not consume the 40-second test budget.
+    Leaves the app, emulator and successful port forwarding available for testing.
+    """
+    if run_lock.locked():
+        return {"status": "busy"}
+    async with run_lock:
+        return await prepare_android(device_id, app_id, avd_name, timeout_seconds)
 
 
 @server.tool()

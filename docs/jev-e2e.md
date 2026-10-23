@@ -25,7 +25,7 @@ flowchart TD
 | Componente | Responsabilidade |
 |---|---|
 | Agente do chat | Interpreta o pedido, consulta a UI/código e monta a chamada da ferramenta com IDs reais. |
-| MCP `jev-e2e` | Expõe `inspect_ui` e `run_ui_task` ao agente. |
+| MCP `jev-e2e` | Expõe `prepare_android_app`, `inspect_ui` e `run_ui_task` ao agente. |
 | `UIRunner` | Observa a UI, constrói as opções, consulta o Jev, valida a decisão, executa e confere as asserções. |
 | Jev | Escolhe uma opção entre as ações oferecidas e retorna sua confiança. |
 | Marionette | Conecta ao app e transporta as leituras e interações solicitadas pelo executor. |
@@ -216,9 +216,10 @@ Use o MCP jev-e2e para testar a jornada completa de 7 telas.
 Leia automation/examples/generic_journey.json e use o objetivo,
 os inputs e todas as 19 condições de sucesso definidos nele.
 
-Identifique a URI Dart VM Service do app em execução e use inspect_ui
-para conferir o estado inicial. Se a URI não estiver disponível,
-solicite a URI antes de executar.
+Identifique a URI Dart VM Service e use inspect_ui para conferir o estado inicial.
+No Android, se não houver uma URI atual, use prepare_android_app com device_id
+e app_id; forneça avd_name se o emulador estiver fechado. Se a preparação for
+bloqueada por acesso ao ADB, solicite a URI obtida no terminal do desenvolvedor.
 
 Chame run_ui_task passando explicitamente:
 - min_confidence: 0.55
@@ -241,6 +242,8 @@ identificar elementos de telas futuras e condições de conclusão.
 ## Execução direta pelo terminal
 
 A instalação e a configuração do ambiente estão no [README](../README.md).
+O README também descreve como reabrir o APK debug instalado e descobrir uma
+URI atual sem compilar novamente nem manter `flutter run` ativo.
 Para executar a especificação pelo CLI, a partir da raiz do projeto:
 
 ```sh
