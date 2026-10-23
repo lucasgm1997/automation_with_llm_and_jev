@@ -78,7 +78,12 @@ sem autenticação HTTP. Não publique essa porta na rede sem acrescentar autent
 
 ## Conectar o cliente MCP
 
-No Codex CLI:
+Este repositório já inclui [.codex/config.toml](../.codex/config.toml) com
+`jev-e2e-docker` apontando para o serviço HTTP. Em projetos confiáveis, uma
+nova sessão do Codex pode carregar essa configuração de projeto. Confira com
+`codex mcp list`; a configuração não inicia o container.
+
+Para cadastrar o mesmo endpoint no perfil do Codex e usá-lo em outros projetos:
 
 ```sh
 codex mcp add jev-e2e-docker --url http://127.0.0.1:8765/mcp

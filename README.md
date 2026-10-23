@@ -25,6 +25,34 @@ O agente principal não participa de cada toque. A sessão Marionette e o client
 HTTP do provedor são reutilizados durante o teste. Este projeto não precisa de
 LangChain nem de um SDK de agentes.
 
+## Novas sessões do Codex
+
+O [AGENTS.md](AGENTS.md) orienta o desenvolvimento: seguir a arquitetura que
+você informar e conhecer as ferramentas de UI, Console e Network, usando-as
+quando forem úteis. O uso do MCP é opcional; a demonstração `main_crud.dart`
+não define a arquitetura de novos produtos.
+
+A skill [flutter-evidence](.agents/skills/flutter-evidence/SKILL.md) contém o
+guia de uso dessas fontes. Pode ser invocada com `$flutter-evidence`.
+O MCP `jev-e2e-docker` está declarado em [.codex/config.toml](.codex/config.toml)
+para este projeto. Inicie o serviço Docker, abra uma nova sessão na pasta do
+repositório e confira as ferramentas disponíveis. Configurações de projeto
+dependem da confiança atribuída ao projeto pelo cliente; o Markdown não
+substitui a configuração MCP nem inicia os serviços.
+
+Exemplo de pedido para a nova sessão:
+
+```text
+Implemente o produto CRUD seguindo a arquitetura descrita abaixo.
+Leia AGENTS.md. Você tem ferramentas de UI, Console e Network disponíveis;
+use as que ajudarem a implementar, verificar ou diagnosticar a tarefa.
+Arquitetura e requisitos: [informe as regras ou indique o documento].
+```
+
+Referências oficiais: [instruções AGENTS.md](https://learn.chatgpt.com/docs/agent-configuration/agents-md),
+[skills locais](https://learn.chatgpt.com/docs/build-skills) e
+[configuração MCP](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
+
 ## Executar os serviços com Docker Compose
 
 O Compose empacota o MCP, o executor Python, o runtime Marionette e o cliente UI Automator. **O app e
@@ -79,6 +107,11 @@ O [guia de Console e Network](docs/runtime-evidence.md) explica filtros,
 paginação, ciclo de vida, cobertura e validação. O app continua precisando de
 um VM Service acessível; mensagens produzidas pela IDE/build e logs nativos
 do Android não fazem parte dessa coleta.
+
+Para validar com requisições reais, a entrada [`lib/main_crud.dart`](lib/main_crud.dart)
+cria, lista e exclui um produto no CrudCrud, e permite consultar o registro
+excluído para produzir um HTTP 404 com log e stack trace. Veja como executar e
+acompanhar as chamadas MCP no [exemplo CRUD](docs/runtime-evidence.md#crud-real-no-aplicativo-android).
 
 ## Android sem dependência do Flutter
 
